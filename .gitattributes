@@ -1,0 +1,21 @@
+# Bu fayl repo-nun sətir-sonu (line ending) davranışını sabitləyir.
+# Go standartı LF-dir (Linux/macOS-da da problemsiz açılsın deyə) —
+# Windows-da yazsan belə, Git repo-ya YAZARKƏN avtomatik LF-ə çevirir,
+# sənin diskinə checkout edərkən isə (istəsən) CRLF saxlaya bilər.
+# Bu, "LF will be replaced by CRLF" xəbərdarlığının kökünü aradan qaldırır,
+# çünki artıq Git-ə TƏSADÜFİ deyil, AÇIQ şəkildə nə etməli olduğunu deyirik.
+
+* text=auto eol=lf
+
+*.go  text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binary fayllar - toxunulmamalıdır
+*.exe binary
+*.png binary
+*.jpg binary
+*.jpeg binary
