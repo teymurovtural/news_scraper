@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+
+	"example.com/new-scraper/internal/platform/netguard"
 )
 
 // validatePublicHTTPURL — verilmiş URL-in http/https sxemli, düzgün host-lu
@@ -36,7 +38,7 @@ func validatePublicHTTPURL(rawURL string) error {
 	// Host birbaşa IP kimi yazılıbsa (məs. "http://127.0.0.1:5434"),
 	// birbaşa yoxla — DNS lookup-a ehtiyac yoxdur.
 	if ip := net.ParseIP(host); ip != nil {
-		if isDisallowedIP(ip) {
+		if netguard.IsDisallowedIP(ip) {
 			return fmt.Errorf("daxili/private şəbəkə ünvanlarına icazə verilmir: %s", host)
 		}
 		return nil
@@ -46,12 +48,18 @@ func validatePublicHTTPURL(rawURL string) error {
 	// zahirən "public" görünsə belə, DNS cavabı private IP-yə yönəldilə bilər
 	// ("DNS rebinding" adlanan texnika). Ona görə host adının özünə deyil,
 	// faktiki resolve olunan IP-lərə baxırıq.
+	//
+	// QEYD: bu, yalnız YARADILMA ANINDA edilən bir yoxlamadır. Faktiki RSS
+	// fetch-i (hər 15 dəqiqədən bir, fetcher.go tərəfindən) AYRICA, öz DNS
+	// lookup-unu edir — DNS rebinding-in tam qarşısını almaq üçün bu, kifayət
+	// deyil. Fetch-anı qorunması üçün bax: internal/platform/netguard
+	// (SafeDialContext) və fetcher.go.
 	ips, err := net.LookupIP(host)
 	if err != nil {
 		return fmt.Errorf("host resolve edilmədi: %w", err)
 	}
 	for _, ip := range ips {
-		if isDisallowedIP(ip) {
+		if netguard.IsDisallowedIP(ip) {
 			return fmt.Errorf("host daxili/private şəbəkə ünvanına yönəlir: %s", host)
 		}
 	}
@@ -59,17 +67,9 @@ func validatePublicHTTPURL(rawURL string) error {
 	return nil
 }
 
-// isDisallowedIP — loopback (127.0.0.1, ::1), private (RFC1918: 10.x, 172.16-31.x,
-// 192.168.x), link-local (169.254.x.x — bulud metadata ünvanları da buradadır)
-// və s. "daxili" sayılan IP-ləri tanıyır.
-func isDisallowedIP(ip net.IP) bool {
-	return ip.IsLoopback() ||
-		ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() ||
-		ip.IsMulticast()
-}
+// (isDisallowedIP artıq bu faylda deyil — internal/platform/netguard
+// paketinə köçürülüb, çünki eyni məntiq fetcher.go tərəfindən də (fetch-anı
+// SSRF yoxlaması üçün) istifadə olunur. Tək mənbə, iki istifadəçi.)
 
 // validSourceName — yalnız hərf (Azərbaycan/Latın simvolları daxil deyil,
 // sadəlik üçün ASCII saxlanılır), rəqəm, boşluq, tire və nöqtəyə icazə verir.

@@ -5,12 +5,36 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"example.com/new-scraper/internal/domain"
+	"example.com/new-scraper/internal/platform/netguard"
 
 	"github.com/mmcdole/gofeed"
 )
+
+// safeHTTPClient — gofeed-in RSS fetch etmək üçün istifadə etdiyi HTTP
+// client. Adi http.DefaultClient əvəzinə BUNU istifadə etməyimizin səbəbi:
+// Transport.DialContext netguard.SafeDialContext-ə işarə edir, yəni hər
+// TCP bağlantısı açılmazdan ƏVVƏL, faktiki qoşulacaq IP-nin daxili/private
+// olmadığı YENİDƏN yoxlanılır.
+//
+// TƏHLÜKƏSİZLİK QEYDİ (niyə bu, YALNIZ source_handler.validatePublicHTTPURL
+// kifayət ETMİR): o yoxlama bir dəfə, mənbə YARADILAN anda edilir. Bu
+// FetchSource isə HƏR mənbə üçün 15 dəqiqədən bir (scheduler tərəfindən)
+// TƏKRAR çağırılır — hər çağırışda gofeed ÖZ DNS lookup-unu edir, yaradılma
+// anındakı yoxlamadan tamamilə xəbərsiz. Domenin DNS-i yaradılmadan sonra
+// dəyişə bilər (DNS rebinding) — client-in Transport-u olmasa, fetch anında
+// heç bir qoruma qalmazdı. Ətraflı izah: internal/platform/netguard.
+//
+// Paket-səviyyəli dəyişən olaraq bir dəfə qurulur (hər FetchSource çağırışında
+// yeni Transport yaratmaq lazımsız, bağlantı pool-unu da sıfırlayardı).
+var safeHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: netguard.SafeDialContext,
+	},
+}
 
 type FetcherService struct {
 	sourceRepo   domain.SourceRepository
@@ -46,6 +70,7 @@ func (s *FetcherService) FetchAll(ctx context.Context) error {
 
 func (s *FetcherService) FetchSource(ctx context.Context, source domain.Source) error {
 	fp := gofeed.NewParser()
+	fp.Client = safeHTTPClient
 
 	fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
