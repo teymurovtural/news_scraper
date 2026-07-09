@@ -1,6 +1,7 @@
 package base
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/playwright-community/playwright-go"
@@ -40,4 +41,30 @@ func ExtractLazyImageAttr(img playwright.Locator, timeoutMs float64) (src, alt s
 		Timeout: playwright.Float(timeoutMs),
 	})
 	return src, alt
+}
+
+// ResolveURL — nisbi (relative) bir URL-i (məs. "/images/x.jpg" və ya
+// protokol-nisbi "//cdn.example.com/x.jpg") səhifənin öz ünvanına (pageURL)
+// görə mütləq (absolute) URL-ə çevirir. src artıq mütləqdirsə (http/https
+// ilə başlayırsa) və ya "data:image" URI-dirsə, toxunulmadan qaytarılır.
+//
+// BUG FIX: bəzi saytlar (məs. CyberScoop-un cover şəkli) <img> atributunda
+// mütləq deyil, nisbi yol qaytara bilir. Bu, DB-yə/export-a olduğu kimi
+// "/foo.jpg" şəklində yazılırdısa, /view səhifəsində və ya JSON export-u
+// istifadə edən istənilən xarici alətdə şəkil sınmış link kimi görünürdü
+// (çünki nisbi yol o alətin ÖZ domenindən axtarılır, mənbə saytdan yox).
+func ResolveURL(pageURL, src string) string {
+	if src == "" || strings.HasPrefix(src, "data:image") {
+		return src
+	}
+
+	baseURL, err := url.Parse(pageURL)
+	if err != nil {
+		return src
+	}
+	ref, err := url.Parse(src)
+	if err != nil {
+		return src
+	}
+	return baseURL.ResolveReference(ref).String()
 }

@@ -3,11 +3,17 @@ services:
     image: postgres:16-alpine
     container_name: news_scraper_postgres
     environment:
-      POSTGRES_DB: news_scraper
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: news555
+      # BUG FIX: parol əvvəllər bu fayla hardcode edilmişdi ("news555").
+      # Docker Compose eyni qovluqdakı .env faylını avtomatik oxuyub bu
+      # dəyişənləri əvəz edir — beləliklə parol YALNIZ .env-də (git-ə
+      # düşməyən, .gitignore-da olan fayl) saxlanılır, tətbiqin öz DB_*
+      # dəyişənləri ilə də HƏMİŞƏ sinxron qalır (ikisi ayrı-ayrı yazılıb
+      # təsadüfən fərqli ola bilməzdi).
+      POSTGRES_DB: ${DB_NAME:-news_scraper}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD .env faylında təyin edilməlidir}
     ports:
-      - "5434:5432"
+      - "${DB_PORT:-5434}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

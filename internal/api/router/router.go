@@ -7,11 +7,27 @@ import (
 	"example.com/new-scraper/internal/api/middleware"
 )
 
+// Config — router-in ehtiyac duyduğu bütün konfiqurasiyanı bir yerə
+// toplayır. Əvvəllər NewRouter yalnız apiKey string qəbul edirdi — CORS və
+// rate-limit əlavə olunanda parametr sayının artmasının qarşısını almaq
+// üçün bunlar bir struct-a yığıldı.
+type Config struct {
+	APIKey string
+
+	// CORSAllowedOrigins — boşdursa (default), CORS header-ləri heç əlavə
+	// olunmur (əvvəlki davranışla eyni). Bax config.ServerConfig.CORSAllowedOrigins.
+	CORSAllowedOrigins []string
+
+	// RateLimitPerMinute — 0-dırsa, rate-limiting tamamilə deaktivdir.
+	RateLimitPerMinute int
+	RateLimitBurst     int
+}
+
 func NewRouter(
 	itemHandler *handler.ItemHandler,
 	sourceHandler *handler.SourceHandler,
 	healthHandler *handler.HealthHandler,
-	apiKey string,
+	cfg Config,
 ) http.Handler {
 	// protected — API_KEY tələb edən bütün "əsl" API endpoint-lər.
 	protected := http.NewServeMux()
@@ -47,7 +63,22 @@ func NewRouter(
 	// Qalan bütün route-lar "/" vasitəsilə auth-lu alt-mux-a yönləndirilir.
 	// Go 1.22+ ServeMux ən spesifik pattern-i seçir, ona görə yuxarıdakı
 	// "GET /api/v1/items/{id}/view" bu catch-all-dan həmişə üstün olacaq.
-	mux.Handle("/", middleware.APIKeyAuth(apiKey)(protected))
+	mux.Handle("/", middleware.APIKeyAuth(cfg.APIKey)(protected))
 
-	return middleware.Logger(mux)
+	// Middleware zənciri (ən xaricdən ən daxilə): CORS → rate-limit → logger → mux.
+	// CORS ən xaricdə olmalıdır ki, brauzerin OPTIONS preflight sorğusu
+	// auth/rate-limit-ə çatmadan cavablansın. Rate-limit logger-dən əvvəl
+	// gəlir ki, rədd edilən sorğular da loglansın (görünürlük üçün).
+	var h http.Handler = mux
+	h = middleware.Logger(h)
+
+	if cfg.RateLimitPerMinute > 0 {
+		h = middleware.RateLimit(cfg.RateLimitPerMinute, cfg.RateLimitBurst)(h)
+	}
+
+	// CORS boş origin siyahısı ilə çağırılsa belə təhlükəsizdir — middleware
+	// öz daxilində heç bir header əlavə etmədən sadəcə keçirir (bax cors.go).
+	h = middleware.CORS(cfg.CORSAllowedOrigins)(h)
+
+	return h
 }

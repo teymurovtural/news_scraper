@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -33,6 +34,21 @@ type DBConfig struct {
 type ServerConfig struct {
 	Port   string
 	APIKey string
+
+	// CORSAllowedOrigins — icazə verilən origin-lərin siyahısı (CORS_ALLOWED_ORIGINS,
+	// vergüllə ayrılmış, məs. "https://dashboard.example.com,https://app.example.com").
+	// Boşdursa (default), CORS header-ləri ÜMUMİYYƏTLƏ əlavə olunmur — brauzer
+	// tərəfindən çarpaz-domen sorğusu mümkün olmur (əvvəlki davranışla eynidir,
+	// backward-compatible default). "*" xüsusi dəyəri bütün origin-lərə icazə verir.
+	CORSAllowedOrigins []string
+
+	// RateLimitPerMinute — IP başına dəqiqədə icazə verilən sorğu sayı
+	// (RATE_LIMIT_PER_MINUTE). 0 rate-limiting-i tamamilə deaktiv edir.
+	RateLimitPerMinute int
+	// RateLimitBurst — token bucket-in "partlayış" tutumu (RATE_LIMIT_BURST) —
+	// qısa müddətdə RateLimitPerMinute-dan çox, amma bu ədəddən az sorğuya
+	// icazə verir (məs. səhifə açılışında paralel bir neçə sorğu).
+	RateLimitBurst int
 }
 
 type LogConfig struct {
@@ -71,8 +87,11 @@ func Load() (*Config, error) {
 			SSLMode:  os.Getenv("DB_SSLMODE"),
 		},
 		Server: ServerConfig{
-			Port:   os.Getenv("SERVER_PORT"),
-			APIKey: os.Getenv("API_KEY"),
+			Port:               os.Getenv("SERVER_PORT"),
+			APIKey:             os.Getenv("API_KEY"),
+			CORSAllowedOrigins: parseCSVEnv(os.Getenv("CORS_ALLOWED_ORIGINS")),
+			RateLimitPerMinute: envIntOrDefault("RATE_LIMIT_PER_MINUTE", 300),
+			RateLimitBurst:     envIntOrDefault("RATE_LIMIT_BURST", 50),
 		},
 		Log: LogConfig{
 			Level:  os.Getenv("LOG_LEVEL"),
@@ -104,6 +123,42 @@ func logFormatOrDefault(v string) string {
 	default:
 		return "text"
 	}
+}
+
+// parseCSVEnv — "a, b ,c" kimi vergüllə ayrılmış env dəyərini []string-ə
+// çevirir, hər elementin ətrafındakı boşluqları təmizləyir, boş elementləri
+// atır. Env dəyəri boşdursa nil qaytarır (CORS default olaraq deaktiv qalır).
+func parseCSVEnv(v string) []string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// envIntOrDefault — env dəyişəni boşdursa ya da rəqəmə çevrilmirsə (ya da
+// mənfidirsə), tətbiqi DAYANDIRMADAN default dəyəri qaytarır. Bu, CORS/
+// rate-limit kimi "sərtləşdirmə" seçimlərinin, konfiqurasiya səhvi üzündən
+// serveri ayağa qaldırmağın qarşısını kəsməməsi üçündür (LOG_LEVEL-ə oxşar
+// fəlsəfə — bax platform/logger.parseLevel).
+func envIntOrDefault(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return def
+	}
+	return n
 }
 
 func (c *Config) validate() error {

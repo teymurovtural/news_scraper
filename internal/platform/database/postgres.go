@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -21,7 +23,27 @@ const (
 )
 
 func NewPostgresDB(dsn string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(context.Background(), dsn)
+	poolCfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("database: DSN parse edilmədi: %w", err)
+	}
+
+	// BUG FIX (pool tənzimlənməsi): əvvəlki versiya pgxpool.New(dsn) çağırırdı
+	// — bu, pgx-in default MaxConns dəyərini (CPU sayına bağlı, adətən 4)
+	// istifadə edirdi. WORKER_COUNT artırılanda (paralel scraper worker-ləri,
+	// hər biri UpdateScrapedData ilə DB-yə yazır) bu default, iş yükü ilə
+	// uyğunlaşdırılmadan qala bilərdi. DB_MAX_CONNS env dəyişəni ilə indi
+	// açıq tənzimlənə bilər — təyin olunmasa, pgx-in öz default-u qalır
+	// (davranış DƏYİŞMİR, sadəcə İSTƏYƏ BAĞLI override imkanı əlavə olunur).
+	if v := os.Getenv("DB_MAX_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			poolCfg.MaxConns = int32(n)
+		} else {
+			slog.Warn("database: DB_MAX_CONNS yanlışdır, pgx default-u istifadə olunur", "value", v)
+		}
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
 	if err != nil {
 		return nil, fmt.Errorf("database: bağlantı açılmadı: %w", err)
 	}

@@ -179,9 +179,30 @@ func isPathInsideExports(dirPath string) bool {
 // müvəqqəti fayla ("*.tmp") yazılır, disk-ə sync edilir, sonra hədəf faylın
 // üzərinə ATOMIK `rename` edilir. Eyni fayl sistemində rename atomikdir —
 // crash olsa, ya köhnə fayl bütöv qalır, ya da tam yeni fayl görünür.
+
+// sizeWarnThresholdBytes — bu ölçüdən böyük fayl hər export dövründə tam
+// oxunub yenidən yazılırsa, xəbərdarlıq loglanır (bax aşağıdakı qeyd).
+const sizeWarnThresholdBytes = 5 * 1024 * 1024 // 5 MB
+
 func appendToFile(fileName string, items []ExportItem) (int, error) {
 	var existing []ExportItem
 	seen := make(map[string]bool)
+
+	// PERFORMANS QEYDİ: bu funksiya JSON array formatını saxlamaq üçün
+	// (downstream uyğunluq naminə — export faylları başqa alətlər/skriptlər
+	// tərəfindən oxuna bilər) hər çağırışda MÖVCUD faylın tamamını oxuyub
+	// yenidən yazır. Bunun QƏSDƏN qəbul edilə bilən olmasının səbəbi: fayl
+	// adı tarixə görədir (`export_2026-07-09.json`), yəni HƏR GÜN yeni,
+	// sıfırdan fayl açılır — böyümə sonsuz DEYİL, bir günlük məlumatla
+	// hüdudlanıb. Əgər gündəlik xəbər sayı çox artsa (məs. yeni mənbələr
+	// əlavə olunsa), bu fayl böyüyə bilər — aşağıdakı ölçü yoxlaması bunu
+	// erkən görməyə imkan verir. Əgər bu xəbərdarlıq tez-tez görünməyə
+	// başlasa, JSONL (append-only, sətir-sətir) formatına keçmək lazım
+	// olacaq — bu, ayrıca (format-dəyişdirən) bir iş kimi planlaşdırılmalıdır.
+	if info, statErr := os.Stat(fileName); statErr == nil && info.Size() > sizeWarnThresholdBytes {
+		slog.Warn("exporter: gündəlik export faylı böyüyür, hər dövrədə tam yenidən yazılır — JSONL formatına keçməyi düşün",
+			"file", fileName, "size_bytes", info.Size())
+	}
 
 	data, err := os.ReadFile(fileName)
 	if err == nil {

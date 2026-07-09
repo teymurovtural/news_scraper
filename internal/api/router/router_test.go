@@ -68,7 +68,7 @@ func newTestRouter(apiKey string) http.Handler {
 	itemHandler := handler.NewItemHandler(&fakeFeedItemRepo{})
 	sourceHandler := handler.NewSourceHandler(&fakeSourceRepo{})
 	healthHandler := handler.NewHealthHandler(&fakePinger{})
-	return router.NewRouter(itemHandler, sourceHandler, healthHandler, apiKey)
+	return router.NewRouter(itemHandler, sourceHandler, healthHandler, router.Config{APIKey: apiKey})
 }
 
 // TestView_BypassesAuth — söhbətdə tapılan bug-ın regressiya testidir:
@@ -158,7 +158,7 @@ func TestHealthz_BypassesAuthAndReportsDBStatus(t *testing.T) {
 		handler.NewItemHandler(&fakeFeedItemRepo{}),
 		handler.NewSourceHandler(&fakeSourceRepo{}),
 		healthyHandler,
-		"secret123",
+		router.Config{APIKey: "secret123"},
 	)
 	req1 := httptest.NewRequest("GET", "/healthz", nil)
 	rec1 := httptest.NewRecorder()
@@ -173,7 +173,7 @@ func TestHealthz_BypassesAuthAndReportsDBStatus(t *testing.T) {
 		handler.NewItemHandler(&fakeFeedItemRepo{}),
 		handler.NewSourceHandler(&fakeSourceRepo{}),
 		unhealthyHandler,
-		"secret123",
+		router.Config{APIKey: "secret123"},
 	)
 	req2 := httptest.NewRequest("GET", "/healthz", nil)
 	rec2 := httptest.NewRecorder()

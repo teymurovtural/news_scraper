@@ -26,7 +26,15 @@ tasks:
   clean-exports:
     desc: "exports/ qovluğunu silir (köhnə export fayllarının yeni test ilə qarışmaması üçün)"
     cmds:
-      - cmd: powershell -Command "Remove-Item -Recurse -Force exports -ErrorAction SilentlyContinue"
+      # BUG FIX: "Remove-Item ... -ErrorAction SilentlyContinue" xəta MESAJINI
+      # gizlədir, amma powershell.exe yenə də exit code 1 qaytarır (çünki
+      # pipeline daxilində bir error record yaranıb, ErrorAction bunu yalnız
+      # GÖRÜNMƏZ edir, "baş verməyib" etmir). Task bu 1-i uğursuzluq sayıb
+      # bütün zənciri (dev-fresh) dayandırırdı — hətta qovluq artıq mövcud
+      # olmayanda belə (yəni məqsəd onsuz da əldə olunmuş olanda). İndi
+      # əvvəlcə Test-Path ilə yoxlanılır, yalnız varsa silinir, sonda HƏMİŞƏ
+      # "exit 0" ilə bitir.
+      - cmd: powershell -Command "if (Test-Path exports) { Remove-Item -Recurse -Force exports }; exit 0"
         platforms: [windows]
       - cmd: rm -rf exports
         platforms: [linux, darwin]

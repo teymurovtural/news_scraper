@@ -113,6 +113,11 @@ func (s *Scraper) ScrapePage(page playwright.Page, fi domain.FeedItem) scraper.S
 	featuredImg := page.Locator("figure.single-article__cover img.single-article__cover-image").First()
 	src, err := featuredImg.GetAttribute("src", playwright.LocatorGetAttributeOptions{Timeout: playwright.Float(actionTimeout)})
 	if err == nil && src != "" && !strings.HasPrefix(src, "data:image") {
+		// BUG FIX: src bəzən nisbi yol ("/wp-content/uploads/...") ola bilir —
+		// page.URL()-ə görə mütləq URL-ə çeviririk ki, DB-yə/export-a düzgün,
+		// hər yerdə açıla bilən link yazılsın (bax base.ResolveURL şərhi).
+		src = base.ResolveURL(page.URL(), src)
+
 		alt, _ := featuredImg.GetAttribute("alt", playwright.LocatorGetAttributeOptions{Timeout: playwright.Float(actionTimeout)})
 		images = append(images, scraper.ImageItem{URL: src, Alt: alt})
 

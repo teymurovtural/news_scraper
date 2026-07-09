@@ -17,6 +17,7 @@ type Scheduler struct {
 	interval        time.Duration
 	workerCount     int
 	stopCh          chan struct{}
+	doneCh          chan struct{}
 }
 
 func NewScheduler(
@@ -33,6 +34,7 @@ func NewScheduler(
 		interval:        time.Duration(intervalSeconds) * time.Second,
 		workerCount:     workerCount,
 		stopCh:          make(chan struct{}),
+		doneCh:          make(chan struct{}),
 	}
 }
 
@@ -40,6 +42,14 @@ func (s *Scheduler) Start(ctx context.Context) {
 	slog.Info("scheduler başladı", "interval", s.interval.String(), "worker_count", s.workerCount)
 
 	go func() {
+		// BUG FIX (graceful shutdown): əvvəllər Stop() sadəcə stopCh-i
+		// bağlayırdı və çağıran tərəf bunun faktiki nə vaxt təsir etdiyini
+		// bilmirdi — main.go dərhal server.Shutdown/db.Close-a keçirdi, halbuki
+		// bu goroutine hələ də (uzun sürən) bir poll dövrəsinin ortasında ola
+		// bilərdi. İndi goroutine həqiqətən çıxanda (hər hansı səbəbdən:
+		// stopCh, ctx.Done) doneCh bağlanır — Wait(timeout) bunu gözləyə bilir.
+		defer close(s.doneCh)
+
 		s.run(ctx)
 
 		ticker := time.NewTicker(s.interval)
@@ -60,8 +70,35 @@ func (s *Scheduler) Start(ctx context.Context) {
 	}()
 }
 
+// Stop — YENİ poll dövrünün başlamasının qarşısını alır (stopCh bağlanır).
+// DİQQƏT: bu, davam edən (in-flight) bir poll dövrəsini DƏRHAL kəsmir —
+// stopCh yalnız `run()` bitib ticker-in select-inə qayıdanda yoxlanılır.
+// Davam edən dövrənin faktiki bitməsini gözləmək üçün Wait(timeout) istifadə et.
 func (s *Scheduler) Stop() {
 	close(s.stopCh)
+}
+
+// Wait — daxili goroutine-in HƏQİQƏTƏN dayanmasını (doneCh bağlanmasını),
+// verilmiş timeout-a qədər gözləyir.
+//
+// true qaytarırsa: scheduler tam təmiz dayanıb, DB/Playwright indi
+// bağlanmaq üçün TƏHLÜKƏSİZDİR.
+//
+// false qaytarırsa: timeout bitib, amma goroutine hələ davam edir — çox
+// güman, uzun sürən bir scrape mərhələsi (Playwright, şəbəkə) hələ
+// bitməyib. TAM (Go context-səviyyəsində) ləğv etmək üçün scraper/base
+// qatına context ötürülməli və Playwright çağırışları ona bağlanmalıdır —
+// bu, hazırkı fix-in əhatəsindən kənar, ayrıca bir refaktorinq işidir.
+// Qısamüddətli təhlükəsiz həll: main.go bu halda xəbərdarlıq loglayıb yenə
+// də shutdown-a davam edir (server prosesi özü bağlanır, arxa planda qalan
+// goroutine OS tərəfindən proses bitəndə ləğv olunur).
+func (s *Scheduler) Wait(timeout time.Duration) bool {
+	select {
+	case <-s.doneCh:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 func (s *Scheduler) run(ctx context.Context) {

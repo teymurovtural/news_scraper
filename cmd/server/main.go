@@ -46,6 +46,15 @@ func main() {
 
 	slog.Info("konfiqurasiya yükləndi", "log_level", cfg.Log.Level, "log_format", cfg.Log.Format)
 
+	// TƏHLÜKƏSİZLİK XƏBƏRDARLIĞI: API_KEY boşdursa, middleware.APIKeyAuth
+	// özü sakitcə deaktiv olur (local dev üçün nəzərdə tutulub, bax
+	// middleware/auth.go). Bu, produksiyada YANLIŞLIQLA unudulsa, bütün
+	// /api/v1 endpoint-ləri (POST/DELETE daxil) autentifikasiyasız qalar.
+	// Bunu gözdən qaçırmamaq üçün start-up zamanı AÇIQ xəbərdarlıq veririk.
+	if cfg.Server.APIKey == "" {
+		slog.Warn("XƏBƏRDARLIQ: API_KEY boşdur — /api/v1 endpoint-ləri (POST/DELETE daxil) HEÇ BİR autentifikasiya olmadan açıqdır. Bu yalnız local development üçün təhlükəsizdir, produksiyada mütləq API_KEY təyin edin.")
+	}
+
 	db, err := database.NewPostgresDB(cfg.DB.ConnectionString())
 	if err != nil {
 		slog.Error("database bağlantısı qurulmadı", "error", err)
@@ -96,7 +105,12 @@ func main() {
 	sourceHandler := handler.NewSourceHandler(sourceRepo)
 	healthHandler := handler.NewHealthHandler(db)
 
-	r := router.NewRouter(itemHandler, sourceHandler, healthHandler, cfg.Server.APIKey)
+	r := router.NewRouter(itemHandler, sourceHandler, healthHandler, router.Config{
+		APIKey:             cfg.Server.APIKey,
+		CORSAllowedOrigins: cfg.Server.CORSAllowedOrigins,
+		RateLimitPerMinute: cfg.Server.RateLimitPerMinute,
+		RateLimitBurst:     cfg.Server.RateLimitBurst,
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -104,9 +118,25 @@ func main() {
 	sch.Start(ctx)
 
 	addr := fmt.Sprintf(":%s", cfg.Server.Port)
+
+	// BUG FIX (Slowloris / resurs tükənməsi): əvvəlki versiyada http.Server-in
+	// heç bir timeout-u yox idi — yavaş/zərərli bir client connection-u
+	// sonsuz açıq saxlaya, server-in fayl deskriptor/goroutine resurslarını
+	// tükədə bilərdi. Bu dörd timeout standart Go müdafiəsidir:
+	//   - ReadHeaderTimeout: header-lərin oxunması üçün maksimum vaxt
+	//   - ReadTimeout: bütün request body-nin oxunması üçün maksimum vaxt
+	//   - WriteTimeout: cavabın yazılması üçün maksimum vaxt (/view kimi
+	//     bəzi cavablar adi JSON-dan bir az böyük ola bilər, ona görə bir az
+	//     səxavətli saxlanılıb)
+	//   - IdleTimeout: keep-alive connection-un fəaliyyətsiz qala biləcəyi
+	//     maksimum vaxt
 	server := &http.Server{
-		Addr:    addr,
-		Handler: r,
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	go func() {
@@ -122,7 +152,32 @@ func main() {
 	<-quit
 
 	slog.Info("server dayandırılır...")
+
+	// BUG FIX (graceful shutdown): əvvəlki versiya sch.Stop()-u çağırıb
+	// DƏRHAL server.Shutdown-a keçirdi, sonra funksiya qayıdanda defer-lər
+	// (pw.Stop(), db.Close()) işə düşürdü — scheduler-in daxili goroutine-i
+	// hələ də (uzun sürən) bir scrape/export mərhələsinin ortasında ola
+	// bilərdi. Nəticədə DB pool/Playwright browser hələ istifadə olunarkən
+	// bağlana bilərdi.
+	//
+	// İndi əvvəlcə əsas context-i ləğv edirik (bu, fetcher.FetchSource
+	// daxilindəki fetchCtx kimi context-ə bağlı şəbəkə sorğularının dərhal
+	// kəsilməsinə səbəb olur), sonra sch.Stop() ilə yeni dövrənin
+	// başlamasının qarşısını alırıq, sonra da Wait(timeout) ilə davam edən
+	// dövrənin HƏQİQƏTƏN bitməsini gözləyirik.
+	//
+	// QEYD: Playwright scrape mərhələsi hazırda context-ə bağlı deyil (bax
+	// scheduler.Wait şərhi) — ona görə bu gözləmə timeout-a çata bilər, əgər
+	// düz o an bir scrape dövrü gedirsə. Bu halda xəbərdarlıq loglanır və
+	// shutdown YENƏ DƏ davam edir (server prosesi bağlanacaq).
+	cancel()
 	sch.Stop()
+
+	const schedulerShutdownTimeout = 30 * time.Second
+	if !sch.Wait(schedulerShutdownTimeout) {
+		slog.Warn("scheduler: gözləmə vaxtı bitdi, arxa planda bir poll dövrü hələ davam edir ola bilər — buna baxmayaraq shutdown davam edir",
+			"timeout", schedulerShutdownTimeout.String())
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
