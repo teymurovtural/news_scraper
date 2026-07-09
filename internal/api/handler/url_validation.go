@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 )
 
 // validatePublicHTTPURL — verilmiş URL-in http/https sxemli, düzgün host-lu
@@ -68,4 +69,26 @@ func isDisallowedIP(ip net.IP) bool {
 		ip.IsLinkLocalMulticast() ||
 		ip.IsUnspecified() ||
 		ip.IsMulticast()
+}
+
+// validSourceName — yalnız hərf (Azərbaycan/Latın simvolları daxil deyil,
+// sadəlik üçün ASCII saxlanılır), rəqəm, boşluq, tire və nöqtəyə icazə verir.
+var validSourceName = regexp.MustCompile(`^[a-zA-Z0-9 .\-]{2,100}$`)
+
+// validateSourceName — mənbə adının (source.Name) təhlükəsiz olduğunu
+// yoxlayır.
+//
+// TƏHLÜKƏSİZLİK QEYDİ (Path Traversal): source.Name sadəcə DB-də
+// saxlanmır — exporter.go bunu birbaşa fayl sistemi qovluq adı qurmaq
+// üçün istifadə edir (bax exporter.go: `exports/<name-with-spaces-replaced>`).
+// Validasiya olmasa, "../../etc/cron.d/evil" kimi bir ad "exports/"
+// qovluğundan kənara çıxıb serverin fayl sistemində istənilən yerə yazmaq
+// üçün istifadə oluna bilərdi (klassik path traversal zəifliyi). Yalnız
+// hərf/rəqəm/boşluq/tire/nöqtəyə icazə verməklə, "/", "\" və ".." kimi
+// yol-idarəetmə simvollarının Name-ə düşməsinin qarşısı tamamilə alınır.
+func validateSourceName(name string) error {
+	if !validSourceName.MatchString(name) {
+		return fmt.Errorf("yalnız hərf, rəqəm, boşluq, tire və nöqtəyə icazə verilir (2-100 simvol)")
+	}
+	return nil
 }

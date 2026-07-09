@@ -78,6 +78,15 @@ func (h *SourceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BUG FIX (Path Traversal): source.Name sonradan exporter.go tərəfindən
+	// fayl sistemi qovluq adı kimi istifadə olunur — validasiya olmasa,
+	// "../"  kimi ardıcıllıqlar exports/ qovluğundan kənara çıxa bilərdi.
+	// Ətraflı izah üçün bax: url_validation.go — validateSourceName.
+	if err := validateSourceName(input.Name); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("name yanlışdır: %v", err))
+		return
+	}
+
 	// BUG FIX (SSRF): feed_url/site_url server tərəfindən sonradan özü fetch
 	// ediləcək (fetcher.go, scraper-lər) — validasiya olmasa, daxili şəbəkə
 	// ünvanlarına (localhost, DB portu, bulud metadata ünvanı və s.) sorğu

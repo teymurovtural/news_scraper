@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -93,6 +94,22 @@ func (s *ExporterService) Export(ctx context.Context) {
 		dirName := strings.ToLower(strings.ReplaceAll(source.Name, " ", "_"))
 		dirPath := fmt.Sprintf("exports/%s", dirName)
 
+		// TƏHLÜKƏSİZLİK QEYDİ (Path Traversal — 2-ci qat): source.Name
+		// artıq source_handler.Create-də validasiya olunur (bax
+		// validateSourceName), ona görə normal axında "../" bura heç vaxt
+		// çatmamalıdır. Amma bu, ikinci, MÜSTƏQİL bir sərhəddir: məsələn
+		// DB-yə əl ilə (migration, backfill script və s.) yazılmış köhnə
+		// bir sətir, ya da gələcəkdə əlavə olunacaq başqa bir kod yolu
+		// (import, admin script) həmin validasiyanı yan keçə bilər.
+		// isPathInsideExports faktiki hesablanmış yolun, simvolik
+		// linklər/".." nə olursa olsun, HƏMİŞƏ "exports/" kökü daxilində
+		// qaldığını təsdiqləyir — əks halda həmin mənbə üçün export
+		// tamamilə atlanılır, heç bir fayl yazılmır.
+		if !isPathInsideExports(dirPath) {
+			slog.Error("exporter: təhlükəsiz olmayan export yolu, keçilir", "source", source.Name, "dir", dirPath)
+			continue
+		}
+
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
 			slog.Error("exporter: qovluq yaradılmadı", "dir", dirPath, "error", err)
 			continue
@@ -114,6 +131,30 @@ func (s *ExporterService) Export(ctx context.Context) {
 
 		slog.Info("exporter: export edildi", "source", source.Name, "file", fileName, "new_items", added)
 	}
+}
+
+// isPathInsideExports — verilmiş qovluq yolunun, bütün "../" və simvolik
+// linklər həll olunduqdan sonra, faktiki olaraq "exports/" kökünün daxilində
+// qaldığını yoxlayır. Path Traversal-a qarşı son (2-ci qat) sərhəddir —
+// bax yuxarıdakı çağırış yerindəki qeyd.
+func isPathInsideExports(dirPath string) bool {
+	absExports, err := filepath.Abs("exports")
+	if err != nil {
+		return false
+	}
+	absDir, err := filepath.Abs(dirPath)
+	if err != nil {
+		return false
+	}
+
+	rel, err := filepath.Rel(absExports, absDir)
+	if err != nil {
+		return false
+	}
+
+	// rel "../..." ilə başlayırsa, ya da tam olaraq ".."-dirsə, dirPath
+	// exports/ kökündən kənara çıxıb deməkdir.
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // appendToFile — mövcud JSON faylına yeni xəbərlər əlavə edir və faktiki
