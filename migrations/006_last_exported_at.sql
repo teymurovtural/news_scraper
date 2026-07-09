@@ -1,0 +1,1 @@
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS last_exported_at TIMESTAMPTZ;

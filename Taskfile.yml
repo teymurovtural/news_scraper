@@ -1,0 +1,96 @@
+version: '3'
+
+tasks:
+
+  # === TEZ-TEZ İSTİFADƏ OLUNAN ƏSAS TASK-LAR ===
+
+  dev-fresh:
+    desc: "TAM SIFIRLAMA: DB-ni VƏ exports/ qovluğunu siləndən server-ə qədər hər şeyi edir"
+    cmds:
+      - task: down
+      - task: clean-exports
+      - task: up
+      - task: migrate
+      - task: sync
+      - task: server
+
+  dev:
+    desc: "ADİ RESTART: DB-ni SİLMƏDƏN server-i yenidən işə salır (mövcud data qalır)"
+    cmds:
+      - task: up
+      - task: migrate
+      - task: server
+
+  # === TƏK-TƏK ADDIMLAR (lazım olanda ayrıca da çağırıla bilər) ===
+
+  clean-exports:
+    desc: "exports/ qovluğunu silir (köhnə export fayllarının yeni test ilə qarışmaması üçün)"
+    cmds:
+      - cmd: powershell -Command "Remove-Item -Recurse -Force exports -ErrorAction SilentlyContinue"
+        platforms: [windows]
+      - cmd: rm -rf exports
+        platforms: [linux, darwin]
+
+  up:
+    desc: "Docker container-ləri (Postgres, Netdata) başladır"
+    cmds:
+      - docker compose up -d
+
+  down:
+    desc: "Docker container-ləri VƏ volume-ları silir (DB tam sıfırlanır — DİQQƏT, bütün data itir)"
+    cmds:
+      - docker compose down -v
+
+  migrate:
+    desc: "Bütün SQL migration-ları icra edir"
+    cmds:
+      - go run ./cmd/migrate/main.go
+
+  sync:
+    desc: "RSS mənbələrini DB-yə sinxronlaşdırır (yalnız DB boşdursa lazımdır)"
+    cmds:
+      - go run ./cmd/sync_sources/main.go
+
+  server:
+    desc: "Server-i işə salır (scheduler + API, Ctrl+C ilə dayanana qədər işləyir)"
+    cmds:
+      - go run ./cmd/server/main.go
+
+  reextract:
+    desc: "DB-də artıq scrape olunmuş BÜTÜN item-ləri yeni scraper kodu ilə yenidən scrape edir (server DAYANMIŞ olanda çağır!)"
+    cmds:
+      - go run ./cmd/reextract
+
+  export-full:
+    desc: "Hər mənbə üçün bütün tarixçəni tək JSON fayla dump edir (export_full_*.json — avtomatik exporter-dən ayrı fayl)"
+    cmds:
+      - go run ./cmd/export
+
+  # === BUILD (IT restricted mühitlərdə go run bloklanıbsa) ===
+
+  test:
+    desc: "Bütün unit testləri işlədir (DB/browser lazım deyil, sırf-məntiq testləridir)"
+    cmds:
+      - go test ./... -v
+
+  build:
+    desc: "Bütün cmd/ binary-lərini bin/ qovluğuna build edir"
+    cmds:
+      - go build -o bin/migrate.exe ./cmd/migrate
+      - go build -o bin/sync_sources.exe ./cmd/sync_sources
+      - go build -o bin/server.exe ./cmd/server
+      - go build -o bin/reextract.exe ./cmd/reextract
+      - go build -o bin/export.exe ./cmd/export
+      - go build -o bin/healthcheck.exe ./cmd/healthcheck
+
+  # === KÖMƏKÇİ ===
+
+  logs:
+    desc: "Docker container-lərin log-larını göstərir"
+    cmds:
+      - docker compose logs -f
+
+  psql:
+    desc: "Postgres-ə birbaşa psql ilə qoşulur (debug üçün)"
+    cmds:
+      - docker compose exec postgres psql -U postgres -d news_scraper

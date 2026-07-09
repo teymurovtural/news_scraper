@@ -1,0 +1,1 @@
+ALTER TABLE feed_items ADD COLUMN IF NOT EXISTS content_html TEXT;

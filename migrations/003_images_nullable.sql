@@ -1,0 +1,1 @@
+ALTER TABLE feed_items ALTER COLUMN images DROP NOT NULL;

@@ -1,0 +1,137 @@
+package router_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"example.com/new-scraper/internal/api/handler"
+	"example.com/new-scraper/internal/api/router"
+	"example.com/new-scraper/internal/domain"
+)
+
+// fakeFeedItemRepo — router+handler inteqrasiya testləri üçün minimal saxta
+// FeedItemRepository. Yalnız GetAll/GetByID istifadə olunur, qalanları boş.
+type fakeFeedItemRepo struct{}
+
+func (f *fakeFeedItemRepo) Count(ctx context.Context) (int64, error)                { return 1, nil }
+func (f *fakeFeedItemRepo) Create(ctx context.Context, item *domain.FeedItem) error { return nil }
+func (f *fakeFeedItemRepo) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string) error {
+	return nil
+}
+func (f *fakeFeedItemRepo) GetAll(ctx context.Context, limit, offset int) ([]domain.FeedItem, error) {
+	return []domain.FeedItem{{ID: 1, Title: "test"}}, nil
+}
+func (f *fakeFeedItemRepo) GetByID(ctx context.Context, id int64) (*domain.FeedItem, error) {
+	return &domain.FeedItem{ID: id, Title: "test item", ContentHTML: "<p>content</p>"}, nil
+}
+func (f *fakeFeedItemRepo) GetBySource(ctx context.Context, sourceID int64, limit, offset int) ([]domain.FeedItem, error) {
+	return nil, nil
+}
+func (f *fakeFeedItemRepo) GetBySourceAfterScrapedAt(ctx context.Context, sourceID int64, after time.Time) ([]domain.FeedItem, error) {
+	return nil, nil
+}
+func (f *fakeFeedItemRepo) GetUnscraped(ctx context.Context, limit int) ([]domain.FeedItem, error) {
+	return nil, nil
+}
+func (f *fakeFeedItemRepo) GetEmptyContent(ctx context.Context, limit int) ([]domain.FeedItem, error) {
+	return nil, nil
+}
+
+type fakeSourceRepo struct{}
+
+func (f *fakeSourceRepo) Create(ctx context.Context, s *domain.Source) error { return nil }
+func (f *fakeSourceRepo) GetAll(ctx context.Context) ([]domain.Source, error) {
+	return []domain.Source{{ID: 1, Name: "test source"}}, nil
+}
+func (f *fakeSourceRepo) GetActive(ctx context.Context) ([]domain.Source, error) { return nil, nil }
+func (f *fakeSourceRepo) GetByID(ctx context.Context, id int64) (*domain.Source, error) {
+	return &domain.Source{ID: id, Name: "test source"}, nil
+}
+func (f *fakeSourceRepo) UpdateLastPolled(ctx context.Context, id int64) error     { return nil }
+func (f *fakeSourceRepo) UpdateLastExportedAt(ctx context.Context, id int64) error { return nil }
+func (f *fakeSourceRepo) IncrementFailCount(ctx context.Context, id int64) error   { return nil }
+
+func newTestRouter(apiKey string) http.Handler {
+	itemHandler := handler.NewItemHandler(&fakeFeedItemRepo{})
+	sourceHandler := handler.NewSourceHandler(&fakeSourceRepo{})
+	return router.NewRouter(itemHandler, sourceHandler, apiKey)
+}
+
+// TestView_BypassesAuth — söhbətdə tapılan bug-ın regressiya testidir:
+// /view endpoint-i API_KEY təyin olunsa belə, header-siz açıla bilməlidir
+// (brauzerdə birbaşa açılmaq üçün nəzərdə tutulub).
+func TestView_BypassesAuth(t *testing.T) {
+	r := newTestRouter("secret123")
+
+	req := httptest.NewRequest("GET", "/api/v1/items/1/view", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("/view header-siz açıla bilməlidir, alındı: %d, body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestProtectedEndpoints_RequireAuth — /view xaricindəki bütün endpoint-lər
+// API_KEY tələb etməlidir (auth-un tam açılmadığından əmin oluruq).
+func TestProtectedEndpoints_RequireAuth(t *testing.T) {
+	r := newTestRouter("secret123")
+
+	paths := []string{
+		"/api/v1/items",
+		"/api/v1/items/1",
+		"/api/v1/sources",
+		"/api/v1/sources/1",
+	}
+
+	for _, path := range paths {
+		req := httptest.NewRequest("GET", path, nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s header-siz 401 qaytarmalıdır, alındı: %d", path, rec.Code)
+		}
+	}
+}
+
+// TestProtectedEndpoints_WorkWithCorrectKey — doğru key ilə bu endpoint-lər
+// işləməlidir (auth-un özü də düzgün işlədiyindən əmin oluruq).
+func TestProtectedEndpoints_WorkWithCorrectKey(t *testing.T) {
+	r := newTestRouter("secret123")
+
+	req := httptest.NewRequest("GET", "/api/v1/items", nil)
+	req.Header.Set("X-API-Key", "secret123")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("doğru key ilə /items işləməlidir, alındı: %d", rec.Code)
+	}
+}
+
+// TestViewAndItemsByID_DoNotConflict — Go 1.22+ ServeMux-un "/items/{id}/view"
+// pattern-ini "/items/{id}"-dən daha spesifik seçdiyini təsdiqləyir —
+// /view-in auth-suz olması digər endpoint-lərin qorunmasını pozmamalıdır.
+func TestViewAndItemsByID_DoNotConflict(t *testing.T) {
+	r := newTestRouter("secret123")
+
+	// /items/{id} header-siz — 401 olmalıdır (view ilə qarışmamalıdır)
+	req1 := httptest.NewRequest("GET", "/api/v1/items/42", nil)
+	rec1 := httptest.NewRecorder()
+	r.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusUnauthorized {
+		t.Errorf("/items/42 qorunmalıdır, alındı: %d", rec1.Code)
+	}
+
+	// /items/{id}/view header-siz — 200 olmalıdır
+	req2 := httptest.NewRequest("GET", "/api/v1/items/42/view", nil)
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Errorf("/items/42/view auth-suz açılmalıdır, alındı: %d", rec2.Code)
+	}
+}

@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: news_scraper_postgres
+    environment:
+      POSTGRES_DB: news_scraper
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: news555
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  netdata:
+    image: netdata/netdata
+    container_name: news_scraper_netdata
+    ports:
+      - "19999:19999"
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - netdataconfig:/etc/netdata
+      - netdatalib:/var/lib/netdata
+      - netdatacache:/var/cache/netdata
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+
+volumes:
+  postgres_data:
+  netdataconfig:
+  netdatalib:
+  netdatacache:

@@ -1,0 +1,62 @@
+sources:
+  #  - name: BBC News
+  #    url: https://bbc.com
+  #    feed_url: https://feeds.bbci.co.uk/news/rss.xml
+  #    category: news
+
+  #  - name: The Guardian
+  #    url: https://theguardian.com
+  #    category: news
+
+  #  - name: Ars Technica
+  #    url: https://arstechnica.com
+  #    category: tech
+
+  #  - name: Wired
+  #    url: https://wired.com
+  #    category: tech
+
+  #  - name: Hacker News
+  #    url: https://news.ycombinator.com
+  #    feed_url: https://news.ycombinator.com/rss
+  #    category: tech
+
+  #  - name: TechCrunch
+  #    url: https://techcrunch.com
+  #    feed_url: https://techcrunch.com/feed/
+  #    category: tech
+
+  #  - name: Krebs on Security
+  #    url: https://krebsonsecurity.com
+  #    feed_url: https://krebsonsecurity.com/feed/
+  #    category: security
+
+  - name: The Hacker News
+    url: https://thehackernews.com
+    feed_url: https://feeds.feedburner.com/TheHackersNews
+    category: security
+
+  - name: SecurityWeek
+    url: https://www.securityweek.com
+    feed_url: https://www.securityweek.com/feed
+    category: security
+
+  #- name: Dark Reading
+  # url: https://www.darkreading.com
+  #  feed_url: https://www.darkreading.com/rss.xml
+  # category: security
+
+  - name: Bleeping Computer
+    url: https://www.bleepingcomputer.com
+    feed_url: https://www.bleepingcomputer.com/feed/
+    category: security
+
+  - name: CyberScoop
+    url: https://cyberscoop.com
+    feed_url: https://cyberscoop.com/feed/
+    category: security
+
+  - name: IT Security Guru
+    url: https://www.itsecurityguru.org
+    feed_url: https://www.itsecurityguru.org/feed/
+    category: security

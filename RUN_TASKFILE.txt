@@ -1,0 +1,137 @@
+news_scraper — İŞƏ SALMA BƏLƏDÇİSİ
+=====================================
+
+Bu fayl, layihəni necə işə salacağını izah edir. 3 əsas ssenari var:
+1) Tam sıfırlama (DB + exports/ silinir)
+2) Adi restart (heç nə silinmir)
+3) Tək-tək addımlar (lazım olanda)
+
+
+-------------------------------------------------------------------
+1) TAM SIFIRLAMA — "hər şeyi sıfırdan test etmək istəyirəm"
+-------------------------------------------------------------------
+
+Nə vaxt istifadə et:
+  - Scraper kodunda dəyişiklik edib sıfırdan test etmək istəyəndə
+  - Migration əlavə edib təzə DB ilə yoxlamaq istəyəndə
+  - "Əvvəlki test datası qarışmasın" deyəndə (məsələn export fayllarının
+    köhnə linklərlə qarışmaması üçün)
+
+Komanda:
+    task dev-fresh
+
+Bu, ardıcıl olaraq bunu edir:
+  1. docker compose down -v     → Postgres/Netdata container-ləri VƏ
+                                   bütün DB datasını silir
+  2. exports/ qovluğunu silir   → köhnə export JSON-ları təmizlənir
+  3. docker compose up -d      → container-ləri təzədən qaldırır
+  4. go run cmd/migrate         → bütün migration-ları icra edir
+  5. go run cmd/sync_sources    → RSS mənbələrini DB-yə əlavə edir
+  6. go run cmd/server          → server-i işə salır (Ctrl+C-yə qədər işləyir)
+
+DİQQƏT: Bu, DB-dəki VƏ exports/-dəki bütün datanı SİLİR. Geri qaytarıla bilməz.
+
+
+-------------------------------------------------------------------
+2) ADİ RESTART — "server-i sadəcə yenidən işə salmaq istəyirəm"
+-------------------------------------------------------------------
+
+Nə vaxt istifadə et:
+  - Server-i dayandırıb (Ctrl+C) yenidən işə salmaq istəyəndə
+  - DB-dəki mövcud datanı İTİRMƏK İSTƏMƏYƏNDƏ
+  - Kiçik kod dəyişikliyindən sonra sürətli test (scraper selector-u və s.)
+
+Komanda:
+    task dev
+
+Bu, ardıcıl olaraq bunu edir:
+  1. docker compose up -d      → container-lər onsuz da ayaqdadırsa, toxunmur
+  2. go run cmd/migrate         → YALNI YENİ migration-lar icra olunur
+                                   (schema_migrations cədvəli izləyir,
+                                   köhnələr "artıq icra olunub" deyə keçilir)
+  3. go run cmd/server          → server-i işə salır
+
+Qeyd: bu komandada `sync_sources` YOXDUR — çünki DB silinmədiyi üçün
+mənbələr artıq DB-dədir, təkrar əlavə etməyə ehtiyac yoxdur.
+
+
+-------------------------------------------------------------------
+3) TƏK-TƏK ADDIMLAR (lazım olanda ayrıca çağırmaq üçün)
+-------------------------------------------------------------------
+
+    task up              → yalnız Docker container-lərini başladır
+    task down             → yalnız Docker-i və DB datasını silir
+    task clean-exports    → yalnız exports/ qovluğunu silir
+    task migrate          → yalnız migration-ları icra edir
+    task sync             → yalnız RSS mənbələrini DB-yə sinxronlaşdırır
+    task server            → yalnız server-i işə salır
+    task build             → bütün cmd/ alətlərini bin/*.exe kimi build edir
+                             (go run bloklanan mühitlər üçün)
+    task logs              → Docker container-lərinin log-larını göstərir
+    task psql              → Postgres-ə birbaşa qoşulur (debug üçün)
+
+    task --list            → bütün mövcud task-ların siyahısı
+
+
+-------------------------------------------------------------------
+4) XÜSUSİ ALƏTLƏR — reextract və export-full
+-------------------------------------------------------------------
+
+    task reextract
+
+  Nə edir: DB-də ARTIQ scrape olunmuş BÜTÜN məqalələri, HAZIRKI (yeni
+  düzəldilmiş) scraper kodu ilə YENİDƏN scrape edir və üzərinə yazır.
+
+  Nə vaxt istifadə et: scraper kodunda bug fix edəndən sonra (məsələn
+  dublikat şəkil, başlıq problemi və s. düzəldiləndən sonra), köhnə DB
+  sətirlərini də yeni, düzgün kodla "təzələmək" istəyəndə.
+
+  DİQQƏT: server DAYANMIŞ olanda çağır (Ctrl+C ilə server-i dayandır,
+  sonra bu komandanı işlət). Server işləyərkən çağırsan, iki Playwright
+  nüsxəsi eyni saytlara paralel müraciət edə bilər. Bu, həm də DB-dəki
+  BÜTÜN məqalələri yenidən scrape etdiyi üçün saytlara çoxlu sorğu
+  göndərir — vaxt apara bilər, məqalə sayına görə.
+
+
+    task export-full
+
+  Nə edir: hər mənbə üçün BÜTÜN tarixçəni (DB-dəki bütün məqalələri) tək
+  bir JSON fayla dump edir: exports/{mənbə}/export_full_{tarix}.json
+
+  Fərqi avtomatik exporter-dən (server daxilində hər 15 dəqiqədə bir
+  özü işə düşən): avtomatik exporter YALNIZ yeni məqalələri, artımlı
+  şəkildə export_{tarix}.json faylına əlavə edir. `export-full` isə
+  bir dəfəlik, tam, əl ilə çağırılan bir dump-dır — fərqli fayl adı
+  (export_full_) daşıyır ki, avtomatik exporter-lə heç vaxt toqquşmasın.
+
+  Nə vaxt istifadə et: bütün topladığın datanı bir yerə köçürmək,
+  backup almaq, ya da analiz üçün tam JSON lazım olanda.
+
+
+-------------------------------------------------------------------
+HANSI SSENARİNİ SEÇMƏLİYƏM?
+-------------------------------------------------------------------
+
+  "Scraper kodunu dəyişdim, sıfırdan test edirəm"        → task dev-fresh
+  "Yeni migration yazdım, sıfırdan yoxlamaq istəyirəm"    → task dev-fresh
+  "Kompüteri/GoLand-ı bağladım, yenidən açıb davam edirəm" → task dev
+  "Server çökdü, yenidən başladıram, data qalsın"          → task dev
+  "Yalnız DB-yə baxmaq istəyirəm, heç nə işə salmadan"     → task up, sonra task psql
+  "Scraper-i düzəltdim, köhnə data-nı da yeniləmək istəyirəm" → task reextract (server dayanmış olmalıdır)
+  "Bütün datanı bir JSON-a köçürmək istəyirəm"             → task export-full
+
+
+-------------------------------------------------------------------
+İLK DƏFƏ QURAŞDIRMA (yalnız bir dəfə lazımdır)
+-------------------------------------------------------------------
+
+    go install github.com/go-task/task/v3/cmd/task@latest
+
+Sonra yoxla:
+    task --version
+    task --list
+
+Taskfile.yml faylı go.mod ilə EYNİ qovluqda olmalıdır (layihənin kökündə).
+
+
+a

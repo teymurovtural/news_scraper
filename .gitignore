@@ -1,0 +1,29 @@
+﻿# Binaries
+bin/
+*.exe
+*.exe~
+news_scraper.exe
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+*.iml
+
+# Exports (scrape edilmiş data - repo-da saxlanmamalıdır)
+exports/
+
+# Go
+*.test
+*.out
+vendor/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
