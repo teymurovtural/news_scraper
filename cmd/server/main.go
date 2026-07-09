@@ -94,8 +94,9 @@ func main() {
 
 	itemHandler := handler.NewItemHandler(feedItemRepo)
 	sourceHandler := handler.NewSourceHandler(sourceRepo)
+	healthHandler := handler.NewHealthHandler(db)
 
-	r := router.NewRouter(itemHandler, sourceHandler, cfg.Server.APIKey)
+	r := router.NewRouter(itemHandler, sourceHandler, healthHandler, cfg.Server.APIKey)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

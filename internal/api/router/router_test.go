@@ -2,6 +2,7 @@ package router_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -55,10 +56,19 @@ func (f *fakeSourceRepo) UpdateLastExportedAt(ctx context.Context, id int64) err
 func (f *fakeSourceRepo) IncrementFailCount(ctx context.Context, id int64) error   { return nil }
 func (f *fakeSourceRepo) Deactivate(ctx context.Context, id int64) error           { return nil }
 
+// fakePinger — HealthHandler testləri üçün saxta Pinger. Default olaraq
+// həmişə uğurlu (DB "sağlamdır") davranır.
+type fakePinger struct {
+	err error
+}
+
+func (f *fakePinger) Ping(ctx context.Context) error { return f.err }
+
 func newTestRouter(apiKey string) http.Handler {
 	itemHandler := handler.NewItemHandler(&fakeFeedItemRepo{})
 	sourceHandler := handler.NewSourceHandler(&fakeSourceRepo{})
-	return router.NewRouter(itemHandler, sourceHandler, apiKey)
+	healthHandler := handler.NewHealthHandler(&fakePinger{})
+	return router.NewRouter(itemHandler, sourceHandler, healthHandler, apiKey)
 }
 
 // TestView_BypassesAuth — söhbətdə tapılan bug-ın regressiya testidir:
@@ -135,6 +145,41 @@ func TestDeleteSource_RequiresAuthAndWorksWithCorrectKey(t *testing.T) {
 	r.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusNoContent {
 		t.Errorf("DELETE /sources/1 doğru key ilə 204 qaytarmalıdır, alındı: %d", rec2.Code)
+	}
+}
+
+// TestHealthz_BypassesAuthAndReportsDBStatus — /healthz-in (1) auth-suz
+// açıldığını və (2) DB Ping-inin nəticəsinə görə düzgün status kodu
+// qaytardığını təsdiqləyir.
+func TestHealthz_BypassesAuthAndReportsDBStatus(t *testing.T) {
+	// DB sağlamdır — 200, auth-suz da işləməlidir
+	healthyHandler := handler.NewHealthHandler(&fakePinger{})
+	r1 := router.NewRouter(
+		handler.NewItemHandler(&fakeFeedItemRepo{}),
+		handler.NewSourceHandler(&fakeSourceRepo{}),
+		healthyHandler,
+		"secret123",
+	)
+	req1 := httptest.NewRequest("GET", "/healthz", nil)
+	rec1 := httptest.NewRecorder()
+	r1.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Errorf("/healthz (sağlam DB) 200 qaytarmalıdır, alındı: %d", rec1.Code)
+	}
+
+	// DB Ping xəta versə — 503
+	unhealthyHandler := handler.NewHealthHandler(&fakePinger{err: errors.New("connection refused")})
+	r2 := router.NewRouter(
+		handler.NewItemHandler(&fakeFeedItemRepo{}),
+		handler.NewSourceHandler(&fakeSourceRepo{}),
+		unhealthyHandler,
+		"secret123",
+	)
+	req2 := httptest.NewRequest("GET", "/healthz", nil)
+	rec2 := httptest.NewRecorder()
+	r2.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusServiceUnavailable {
+		t.Errorf("/healthz (DB xətası) 503 qaytarmalıdır, alındı: %d", rec2.Code)
 	}
 }
 

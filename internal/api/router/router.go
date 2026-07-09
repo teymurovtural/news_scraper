@@ -10,6 +10,7 @@ import (
 func NewRouter(
 	itemHandler *handler.ItemHandler,
 	sourceHandler *handler.SourceHandler,
+	healthHandler *handler.HealthHandler,
 	apiKey string,
 ) http.Handler {
 	// protected — API_KEY tələb edən bütün "əsl" API endpoint-lər.
@@ -35,6 +36,13 @@ func NewRouter(
 	// şüurlu güzəşdir, çünki endpoint zatən "ictimai" saytların öz
 	// məqalələrini göstərir, məxfi məlumat deyil.
 	mux.HandleFunc("GET /api/v1/items/{id}/view", itemHandler.View)
+
+	// /healthz da eyni səbəbdən (/view kimi) auth-dan KƏNAR saxlanılır:
+	// Docker Compose healthcheck və gələcək orkestrasiya alətləri (k8s
+	// liveness/readiness probe) X-API-Key header-i göndərmir. Cavab body-si
+	// bilərəkdən minimaldır (bax health_handler.go) — heç bir konfiqurasiya
+	// detalı sızdırmır, ona görə auth-suz açıq olması təhlükəsizdir.
+	mux.HandleFunc("GET /healthz", healthHandler.Health)
 
 	// Qalan bütün route-lar "/" vasitəsilə auth-lu alt-mux-a yönləndirilir.
 	// Go 1.22+ ServeMux ən spesifik pattern-i seçir, ona görə yuxarıdakı
