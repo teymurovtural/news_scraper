@@ -53,6 +53,7 @@ func (f *fakeSourceRepo) GetByID(ctx context.Context, id int64) (*domain.Source,
 func (f *fakeSourceRepo) UpdateLastPolled(ctx context.Context, id int64) error     { return nil }
 func (f *fakeSourceRepo) UpdateLastExportedAt(ctx context.Context, id int64) error { return nil }
 func (f *fakeSourceRepo) IncrementFailCount(ctx context.Context, id int64) error   { return nil }
+func (f *fakeSourceRepo) Deactivate(ctx context.Context, id int64) error           { return nil }
 
 func newTestRouter(apiKey string) http.Handler {
 	itemHandler := handler.NewItemHandler(&fakeFeedItemRepo{})
@@ -110,6 +111,30 @@ func TestProtectedEndpoints_WorkWithCorrectKey(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("doğru key ilə /items işləməlidir, alındı: %d", rec.Code)
+	}
+}
+
+// TestDeleteSource_RequiresAuthAndWorksWithCorrectKey — yeni DELETE
+// /api/v1/sources/{id} route-unun (soft delete) həm auth arxasında
+// qorunduğunu, həm də düzgün key ilə işlədiyini təsdiqləyir.
+func TestDeleteSource_RequiresAuthAndWorksWithCorrectKey(t *testing.T) {
+	r := newTestRouter("secret123")
+
+	// Header-siz — 401
+	req1 := httptest.NewRequest("DELETE", "/api/v1/sources/1", nil)
+	rec1 := httptest.NewRecorder()
+	r.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusUnauthorized {
+		t.Errorf("DELETE /sources/1 header-siz 401 qaytarmalıdır, alındı: %d", rec1.Code)
+	}
+
+	// Düzgün key ilə — 204
+	req2 := httptest.NewRequest("DELETE", "/api/v1/sources/1", nil)
+	req2.Header.Set("X-API-Key", "secret123")
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusNoContent {
+		t.Errorf("DELETE /sources/1 doğru key ilə 204 qaytarmalıdır, alındı: %d", rec2.Code)
 	}
 }
 

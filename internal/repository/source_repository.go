@@ -169,3 +169,24 @@ func (r *SourceRepository) IncrementFailCount(ctx context.Context, id int64) err
 
 	return nil
 }
+
+// Deactivate — mənbəni "soft delete" edir (bax domain/repositories.go-dakı
+// şərh: niyə hard delete yoxdur). Sətir tapılmasa (id yanlışdırsa),
+// domain.ErrSourceNotFound qaytarılır ki, handler bunu 404-ə çevirə bilsin.
+func (r *SourceRepository) Deactivate(ctx context.Context, id int64) error {
+	query := `
+		UPDATE sources
+		SET is_active = false
+		WHERE id = $1
+	`
+
+	tag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("source_repository: Deactivate: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrSourceNotFound
+	}
+
+	return nil
+}

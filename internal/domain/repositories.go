@@ -28,4 +28,11 @@ type SourceRepository interface {
 	UpdateLastPolled(ctx context.Context, id int64) error
 	UpdateLastExportedAt(ctx context.Context, id int64) error
 	IncrementFailCount(ctx context.Context, id int64) error
+	// Deactivate — mənbəni "soft delete" edir: sətir DB-də qalır (tarixi
+	// data, ona aid feed_items itmir), yalnız is_active=false olur və
+	// artıq fetcher/scraper tərəfindən poll olunmur (bax GetActive).
+	// Bilərəkdən HEÇ BİR HARD DELETE (SQL DELETE) metodu yoxdur — SOC/
+	// təhlükəsizlik məlumat toplayan bir alətdə tarixi qeydlərin
+	// itməməsi vacibdir.
+	Deactivate(ctx context.Context, id int64) error
 }
