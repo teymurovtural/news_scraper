@@ -48,6 +48,17 @@ func RunMultiple(
 	}
 	defer browserCtx.Close()
 
+	// TƏHLÜKƏSİZLİK (SSRF - Playwright yolu): tab-lar açılmazdan ƏVVƏL
+	// qoşulur ki, açılan HEÇ bir tab bu qorumadan kənarda qalmasın. Bax:
+	// ssrf_guard.go üçün ətraflı izah.
+	if err := registerSSRFGuard(browserCtx); err != nil {
+		results := make([]scraper.ScrapeResult, len(items))
+		for i, item := range items {
+			results[i] = scraper.ScrapeResult{Item: item, Err: fmt.Errorf("SSRF qorunması quraşdırılmadı: %w", err)}
+		}
+		return results
+	}
+
 	results := make([]scraper.ScrapeResult, len(items))
 	var wg sync.WaitGroup
 
