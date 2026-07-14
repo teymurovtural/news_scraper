@@ -60,7 +60,9 @@ func (s *FetcherService) FetchAll(ctx context.Context) error {
 	for _, source := range sources {
 		if err := s.FetchSource(ctx, source); err != nil {
 			slog.Error("fetcher: mənbə çəkilmədi", "source", source.Name, "feed_url", source.FeedURL, "error", err)
-			s.sourceRepo.IncrementFailCount(ctx, source.ID)
+			if incErr := s.sourceRepo.IncrementFailCount(ctx, source.ID); incErr != nil {
+				slog.Error("fetcher: fail_count yenilənmədi", "source", source.Name, "error", incErr)
+			}
 			continue
 		}
 	}
