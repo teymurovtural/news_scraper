@@ -19,8 +19,25 @@ type FeedItem struct {
 	ViewURL       string      `json:"view_url,omitempty"`
 	Images        []ImageItem `json:"images"`
 	VideoURL      string      `json:"video_url,omitempty"`
-	IsScraped     bool        `json:"is_scraped"`
-	PublishedAt   *time.Time  `json:"published_at"`
-	FetchedAt     time.Time   `json:"fetched_at"`
-	ScrapedAt     *time.Time  `json:"scraped_at"`
+	// CVEIDs — məqalə mətnindən çıxarılan CVE ID-ləri (məs.
+	// ["CVE-2026-58644"]). Eyni CVE-ni paylaşan məqalələri
+	// əlaqələndirmək üçün istifadə olunur (bax
+	// internal/service/scraper/cve.go).
+	CVEIDs      []string   `json:"cve_ids,omitempty"`
+	IsScraped   bool       `json:"is_scraped"`
+	PublishedAt *time.Time `json:"published_at"`
+	FetchedAt   time.Time  `json:"fetched_at"`
+	ScrapedAt   *time.Time `json:"scraped_at"`
+}
+
+// RelatedFeedItem — "əlaqəli məqalə" siyahısı üçün YÜNGÜL DTO (tam
+// FeedItem yox — content/images/HTML DAXİL EDİLMİR). Eyni CVE-ni paylaşan
+// başqa mənbələrin məqalələrini göstərmək üçün istifadə olunur (bax
+// FeedItemRepository.GetRelatedByCVE). Bilərəkdən kiçikdir ki,
+// GET /api/v1/items/{id} cavabı lazımsız yerə şişməsin.
+type RelatedFeedItem struct {
+	ID         int64  `json:"id"`
+	Title      string `json:"title"`
+	SourceName string `json:"source_name"`
+	Link       string `json:"link"`
 }

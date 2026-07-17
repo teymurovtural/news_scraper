@@ -28,6 +28,7 @@ func scanFeedItem(row interface {
 		&item.ID, &item.SourceID, &item.Title, &item.Link,
 		&author, &publishedDate, &content, &contentHTML, &viewURL,
 		&item.Images, &videoURL, &item.IsScraped, &item.PublishedAt, &item.FetchedAt, &item.ScrapedAt,
+		&item.CVEIDs,
 	)
 	if err != nil {
 		return domain.FeedItem{}, err
@@ -55,7 +56,8 @@ func scanFeedItem(row interface {
 
 const selectFields = `
 	SELECT id, source_id, title, link, author, published_date,
-	       content, content_html, view_url, images, video_url, is_scraped, published_at, fetched_at, scraped_at
+	       content, content_html, view_url, images, video_url, is_scraped, published_at, fetched_at, scraped_at,
+	       cve_ids
 	FROM feed_items`
 
 func (r *FeedItemRepository) Create(ctx context.Context, item *domain.FeedItem) error {
@@ -79,14 +81,14 @@ func (r *FeedItemRepository) Create(ctx context.Context, item *domain.FeedItem) 
 	return nil
 }
 
-func (r *FeedItemRepository) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string) error {
+func (r *FeedItemRepository) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string, cveIDs []string) error {
 	query := `
        UPDATE feed_items
-       SET title = $1, author = $2, published_date = $3, content = $4, content_html = $5, view_url = $6, images = $7, video_url = $8, is_scraped = true, scraped_at = NOW()
-       WHERE id = $9
+       SET title = $1, author = $2, published_date = $3, content = $4, content_html = $5, view_url = $6, images = $7, video_url = $8, cve_ids = $9, is_scraped = true, scraped_at = NOW()
+       WHERE id = $10
     `
 
-	_, err := r.db.Exec(ctx, query, title, author, publishedDate, content, contentHTML, viewURL, images, videoURL, id)
+	_, err := r.db.Exec(ctx, query, title, author, publishedDate, content, contentHTML, viewURL, images, videoURL, cveIDs, id)
 	if err != nil {
 		return fmt.Errorf("feed_item_repository: UpdateScrapedData: %w", err)
 	}
@@ -250,4 +252,42 @@ func (r *FeedItemRepository) Count(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("feed_item_repository: Count: %w", err)
 	}
 	return count, nil
+}
+
+// GetRelatedByCVE — cveIDs-dən HƏR HANSI BİRİNİ paylaşan (Postgres-in "&&"
+// array overlap operatoru — "bu iki massivdə ortaq elementmi var?") məqalələri
+// tapır, excludeID-ni (adətən sorğunun özünün item ID-si) nəticədən çıxarır.
+//
+// Bilərəkdən sources ilə JOIN olunub (source_name üçün) — cve_ids GIN
+// indeksi (bax 011_cve_ids.sql) bu sorğunu sürətli edir, çünki && operatoru
+// GIN indeksdən istifadə edə bilir (sıralı skan yox).
+func (r *FeedItemRepository) GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]domain.RelatedFeedItem, error) {
+	if len(cveIDs) == 0 {
+		return nil, nil
+	}
+
+	query := `
+		SELECT fi.id, fi.title, s.name, fi.link
+		FROM feed_items fi
+		JOIN sources s ON s.id = fi.source_id
+		WHERE fi.cve_ids && $1 AND fi.id != $2
+		ORDER BY fi.published_at DESC NULLS LAST
+		LIMIT $3
+	`
+
+	rows, err := r.db.Query(ctx, query, cveIDs, excludeID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("feed_item_repository: GetRelatedByCVE: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]domain.RelatedFeedItem, 0)
+	for rows.Next() {
+		var item domain.RelatedFeedItem
+		if err := rows.Scan(&item.ID, &item.Title, &item.SourceName, &item.Link); err != nil {
+			return nil, fmt.Errorf("feed_item_repository: GetRelatedByCVE scan: %w", err)
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }

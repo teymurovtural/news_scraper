@@ -11,13 +11,19 @@ type FeedItemRepository interface {
 	// BUG FIX / DIZAYN DƏYİŞİKLİYİ: title indi RSS-dən yox, scrape mərhələsindən
 	// gəlir (bax fetcher.go və scraper_service.go) — ona görə UpdateScrapedData
 	// da title-ı qəbul edib yazmalıdır.
-	UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []ImageItem, videoURL string) error
+	UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []ImageItem, videoURL string, cveIDs []string) error
 	GetAll(ctx context.Context, limit, offset int) ([]FeedItem, error)
 	GetByID(ctx context.Context, id int64) (*FeedItem, error)
 	GetBySource(ctx context.Context, sourceID int64, limit, offset int) ([]FeedItem, error)
 	GetBySourceAfterScrapedAt(ctx context.Context, sourceID int64, after time.Time) ([]FeedItem, error)
 	GetUnscraped(ctx context.Context, limit int) ([]FeedItem, error)
 	GetEmptyContent(ctx context.Context, limit int) ([]FeedItem, error)
+	// GetRelatedByCVE — cveIDs-dən HƏR HANSI BİRİNİ paylaşan, AMMA
+	// excludeID-dən fərqli olan məqalələri tapır (Postgres-in "&&" array
+	// overlap operatoru ilə, bax feed_item_repository.go). Yüngül
+	// RelatedFeedItem DTO qaytarır (tam content YOX) — bax cve.go və
+	// migrations/011_cve_ids.sql.
+	GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]RelatedFeedItem, error)
 }
 
 type SourceRepository interface {

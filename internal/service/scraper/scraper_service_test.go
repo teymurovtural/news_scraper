@@ -52,7 +52,7 @@ func newFakeFeedItemRepo() *fakeFeedItemRepo {
 	return &fakeFeedItemRepo{updates: make(map[int64]string)}
 }
 
-func (r *fakeFeedItemRepo) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string) error {
+func (r *fakeFeedItemRepo) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string, cveIDs []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.updates[id] = title
@@ -77,6 +77,9 @@ func (r *fakeFeedItemRepo) GetUnscraped(ctx context.Context, limit int) ([]domai
 	return nil, nil
 }
 func (r *fakeFeedItemRepo) GetEmptyContent(ctx context.Context, limit int) ([]domain.FeedItem, error) {
+	return nil, nil
+}
+func (r *fakeFeedItemRepo) GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]domain.RelatedFeedItem, error) {
 	return nil, nil
 }
 

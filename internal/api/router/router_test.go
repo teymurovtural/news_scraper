@@ -19,7 +19,7 @@ type fakeFeedItemRepo struct{}
 
 func (f *fakeFeedItemRepo) Count(ctx context.Context) (int64, error)                { return 1, nil }
 func (f *fakeFeedItemRepo) Create(ctx context.Context, item *domain.FeedItem) error { return nil }
-func (f *fakeFeedItemRepo) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string) error {
+func (f *fakeFeedItemRepo) UpdateScrapedData(ctx context.Context, id int64, title, author, publishedDate, content, contentHTML, viewURL string, images []domain.ImageItem, videoURL string, cveIDs []string) error {
 	return nil
 }
 func (f *fakeFeedItemRepo) GetAll(ctx context.Context, limit, offset int) ([]domain.FeedItem, error) {
@@ -38,6 +38,9 @@ func (f *fakeFeedItemRepo) GetUnscraped(ctx context.Context, limit int) ([]domai
 	return nil, nil
 }
 func (f *fakeFeedItemRepo) GetEmptyContent(ctx context.Context, limit int) ([]domain.FeedItem, error) {
+	return nil, nil
+}
+func (f *fakeFeedItemRepo) GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]domain.RelatedFeedItem, error) {
 	return nil, nil
 }
 

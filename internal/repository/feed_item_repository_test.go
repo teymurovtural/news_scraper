@@ -15,7 +15,7 @@ import (
 var feedItemColumns = []string{
 	"id", "source_id", "title", "link", "author", "published_date",
 	"content", "content_html", "view_url", "images", "video_url",
-	"is_scraped", "published_at", "fetched_at", "scraped_at",
+	"is_scraped", "published_at", "fetched_at", "scraped_at", "cve_ids",
 }
 
 func TestGetByID_Found(t *testing.T) {
@@ -32,7 +32,7 @@ func TestGetByID_Found(t *testing.T) {
 		int64(77), int64(1), "Test Title", "https://example.com/a",
 		&author, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 		[]domain.ImageItem{}, (*string)(nil), true,
-		(*time.Time)(nil), fetchedAt, (*time.Time)(nil),
+		(*time.Time)(nil), fetchedAt, (*time.Time)(nil), []string{},
 	)
 
 	mock.ExpectQuery("SELECT").WithArgs(int64(77)).WillReturnRows(rows)
@@ -89,13 +89,13 @@ func TestUpdateScrapedData_PassesTitleParameter(t *testing.T) {
 	defer mock.Close()
 
 	mock.ExpectExec("UPDATE feed_items").
-		WithArgs("Yeni Başlıq", "Müəllif", "2026-07-08", "content", "<p>html</p>", "http://view", []domain.ImageItem(nil), "video-url", int64(42)).
+		WithArgs("Yeni Başlıq", "Müəllif", "2026-07-08", "content", "<p>html</p>", "http://view", []domain.ImageItem(nil), "video-url", []string{"CVE-2026-58644"}, int64(42)).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	repo := NewFeedItemRepository(mock)
 	err = repo.UpdateScrapedData(context.Background(), 42,
 		"Yeni Başlıq", "Müəllif", "2026-07-08", "content", "<p>html</p>",
-		"http://view", nil, "video-url",
+		"http://view", nil, "video-url", []string{"CVE-2026-58644"},
 	)
 	if err != nil {
 		t.Fatalf("gözlənilməz xəta: %v", err)

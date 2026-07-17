@@ -43,6 +43,14 @@ func (h *ItemHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// itemResponse — GET /api/v1/items/{id} cavabı. domain.FeedItem-in bütün
+// sahələrini (embedded struct vasitəsilə, JSON-da "flatten" olunur) daşıyır,
+// üstünə YALNIZ CVE-ID-si olan məqalələr üçün related_items əlavə edir.
+type itemResponse struct {
+	domain.FeedItem
+	RelatedItems []domain.RelatedFeedItem `json:"related_items,omitempty"`
+}
+
 func (h *ItemHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -60,7 +68,23 @@ func (h *ItemHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, item)
+	response := itemResponse{FeedItem: *item}
+
+	// Yalnız CVE-ID-si olan məqalələr üçün əlaqələndirmə sorğusu edirik —
+	// digərlərində bu, həmişə boş nəticə verəcək, lazımsız DB sorğusudur.
+	if len(item.CVEIDs) > 0 {
+		related, err := h.feedItemRepo.GetRelatedByCVE(r.Context(), item.CVEIDs, item.ID, 10)
+		if err != nil {
+			// Əlaqəli məqalələr "nice-to-have" məlumatdır — bu sorğu
+			// uğursuz olsa belə, əsas item-i qaytarmaqdan imtina etmirik,
+			// sadəcə related_items boş qalır.
+			slog.Error("item_handler: əlaqəli məqalələr alınmadı", "item_id", id, "error", err)
+		} else {
+			response.RelatedItems = related
+		}
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 const viewPageTemplate = `<!DOCTYPE html>

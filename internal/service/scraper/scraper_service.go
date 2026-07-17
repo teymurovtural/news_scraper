@@ -265,6 +265,11 @@ func (s *ScraperService) scrapeItems(ctx context.Context, items []domain.FeedIte
 							viewURL = fmt.Sprintf("%s/api/v1/items/%d/view", s.baseURL, r.Item.ID)
 						}
 
+						// CVE ID-lərini title+content-dən çıxarırıq (bax cve.go)
+						// — eyni CVE-ni paylaşan məqalələri sonradan
+						// əlaqələndirmək üçün (dedup/related-coverage) əsas.
+						cveIDs := ExtractCVEIDs(r.Content.Title + " " + r.Content.Content)
+
 						if err := s.feedItemRepo.UpdateScrapedData(
 							ctx,
 							r.Item.ID,
@@ -276,6 +281,7 @@ func (s *ScraperService) scrapeItems(ctx context.Context, items []domain.FeedIte
 							viewURL,
 							images,
 							r.Content.VideoURL,
+							cveIDs,
 						); err != nil {
 							slog.Error("scraper_service: DB xətası", "item_id", r.Item.ID, "error", err)
 							failedCh <- r.Item
