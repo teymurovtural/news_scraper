@@ -39,6 +39,14 @@ type FeedItemRepository interface {
 	// GetRelatedByCVE-dən fərqli olaraq, bu, KONKRET bir item ID-si
 	// tələb etmir — tam "kəşf" görünüşüdür).
 	GetCVESummary(ctx context.Context) ([]CVESummary, error)
+	// GetFieldEmptyStats — verilmiş mənbənin SON `limit` scrape olunmuş
+	// item-i arasında hər sahənin (title/author/date/content) neçəsinin
+	// BOŞ qaldığını sayır. Bu, "selector kövrəkliyi" görünürlüyü üçündür:
+	// bir mənbə tam uğursuz olmasa da (fail_count artmır, çünki item-lər
+	// texniki olaraq "uğurla" scrape olunur), sayt HTML strukturunu
+	// dəyişəndə tək bir selector (məs. yalnız author) səssizcə sınıb boş
+	// qala bilər — bax scraper_service.go-dakı checkFieldHealth.
+	GetFieldEmptyStats(ctx context.Context, sourceID int64, limit int) (FieldEmptyStats, error)
 }
 
 type SourceRepository interface {

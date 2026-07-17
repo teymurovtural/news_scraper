@@ -47,6 +47,9 @@ func (f *fakeRepoWithItem) UpdateRelatedCVEFlags(ctx context.Context, cveIDs []s
 func (f *fakeRepoWithItem) GetCVESummary(ctx context.Context) ([]domain.CVESummary, error) {
 	return nil, nil
 }
+func (f *fakeRepoWithItem) GetFieldEmptyStats(ctx context.Context, sourceID int64, limit int) (domain.FieldEmptyStats, error) {
+	return domain.FieldEmptyStats{}, nil
+}
 
 // TestView_RendersContentHTMLVerbatim — DİZAYN DƏYİŞİKLİYİ: video embed
 // artıq item_handler-də deyil, CleanArticleHTML-də (bax

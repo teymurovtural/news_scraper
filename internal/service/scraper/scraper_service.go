@@ -12,6 +12,19 @@ import (
 
 const tabsPerWorker = 5
 
+// fieldHealthSampleSize/fieldHealthWarnThreshold — bax checkFieldHealth.
+// SampleSize=20: kifayət qədər böyük ki, təsadüfi 1-2 boş sahə "böhran"
+// kimi görünməsin, kifayət qədər kiçik ki, real problem 15 dəqiqəlik bir
+// neçə poll dövründə aşkarlansın. MinSample=5: 1-2 item-lik kiçik nümunədə
+// "50%" rəqəmi mənasızdır (məs. 1/2 = 50%, amma bu, statistik cəhətdən
+// heç nə demək deyil) — minimum nümunə həcmi bu yanlış-həyəcanın qarşısını
+// alır.
+const (
+	fieldHealthSampleSize    = 20
+	fieldHealthMinSample     = 5
+	fieldHealthWarnThreshold = 0.5
+)
+
 // ScraperEntry — prefix ilə scraper-i birlikdə saxlayır.
 // Slice istifadə edilir ki, iteration sırası deterministik olsun.
 type ScraperEntry struct {
@@ -328,6 +341,7 @@ func (s *ScraperService) scrapeItems(ctx context.Context, items []domain.FeedIte
 	}
 
 	s.updateSourceHealth(ctx, items, failedItems)
+	s.checkFieldHealth(ctx, items, failedItems)
 
 	slog.Info("scraper_service: chunk tamamlandı", "success", success, "failed", failed)
 	return failedItems
@@ -384,5 +398,65 @@ func (s *ScraperService) updateSourceHealth(ctx context.Context, attempted, fail
 		if deactivated {
 			slog.Warn("scraper_service: XƏBƏRDARLIQ — mənbə ardıcıl scrape uğursuzluqlarına görə avtomatik deaktiv edildi", "source_id", sourceID)
 		}
+	}
+}
+
+// checkFieldHealth — "SELECTOR KÖVRƏKLİYİ" GÖRÜNÜRLÜYÜ: bir mənbə tam
+// uğursuz olmasa da (fail_count artmır, çünki item texniki olaraq "uğurla"
+// scrape olunur — Err == nil), sayt HTML strukturunu dəyişəndə TƏK bir
+// selector (məs. yalnız author) səssizcə sınıb boş qala bilər. Bu, əvvəllər
+// heç cür aşkarlanmırdı — yalnız kimsə export JSON-una və ya DB-yə
+// TƏSADÜFƏN baxıb "niyə author boşdur?" deyə fərq edərdisə.
+//
+// Məntiq: bu scrapeItems çağırışında UĞURLA scrape olunmuş hər mənbə üçün,
+// son fieldHealthSampleSize (20) scrape olunmuş item arasında hər sahənin
+// boş qalma nisbətini yoxlayır. Nisbət fieldHealthWarnThreshold-u (50%)
+// keçsə VƏ nümunə kifayət qədər böyükdürsə (fieldHealthMinSample=5,
+// təsadüfi 1-2 boş sahənin "böhran" kimi görünməsinin qarşısını alır),
+// bir dəfəlik XƏBƏRDARLIQ logu yazılır.
+//
+// DİZAYN QEYDİ: bu, hər item üçün YOX, hər mənbə üçün, scrapeItems
+// çağırışı başına BİR DƏFƏ işə düşür (adətən 15 dəqiqədə bir poll dövründə
+// 1-2 dəfə) — "spam" log riski yoxdur, amma "aylarla xəbərsiz qalmaq"
+// riski də aradan qalxır.
+func (s *ScraperService) checkFieldHealth(ctx context.Context, attempted, failed []domain.FeedItem) {
+	if s.sourceRepo == nil || s.feedItemRepo == nil {
+		return // testlərdə/nadir hallarda repo verilməyə bilər
+	}
+
+	failedIDs := make(map[int64]bool, len(failed))
+	for _, item := range failed {
+		failedIDs[item.ID] = true
+	}
+
+	succeeded := make(map[int64]bool)
+	for _, item := range attempted {
+		if !failedIDs[item.ID] {
+			succeeded[item.SourceID] = true
+		}
+	}
+
+	for sourceID := range succeeded {
+		stats, err := s.feedItemRepo.GetFieldEmptyStats(ctx, sourceID, fieldHealthSampleSize)
+		if err != nil {
+			slog.Error("scraper_service: sahə statistikası alınmadı", "source_id", sourceID, "error", err)
+			continue
+		}
+		if stats.Total < fieldHealthMinSample {
+			continue
+		}
+
+		checkOneField := func(fieldName string, emptyCount int) {
+			rate := float64(emptyCount) / float64(stats.Total)
+			if rate >= fieldHealthWarnThreshold {
+				slog.Warn("scraper_service: XƏBƏRDARLIQ — sahə tez-tez boş qalır, selector sına bilər",
+					"source_id", sourceID, "field", fieldName, "empty_rate", rate, "sample_size", stats.Total)
+			}
+		}
+
+		checkOneField("title", stats.EmptyTitle)
+		checkOneField("author", stats.EmptyAuthor)
+		checkOneField("published_date", stats.EmptyDate)
+		checkOneField("content", stats.EmptyContent)
 	}
 }

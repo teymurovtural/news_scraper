@@ -59,3 +59,17 @@ type CVESummary struct {
 	Count int               `json:"count"`
 	Items []RelatedFeedItem `json:"items"`
 }
+
+// FieldEmptyStats — bir mənbənin son N scrape olunmuş item-i arasında hər
+// sahənin neçəsinin boş qaldığının sayı (bax
+// FeedItemRepository.GetFieldEmptyStats, scraper_service.go-dakı
+// checkFieldHealth). Faiz deyil, xam say saxlanılır — nisbəti çağıran tərəf
+// (Total-a bölərək) hesablayır, çünki Total=0 olanda (heç scrape olunmayıb)
+// bölmə xətasının qarşısını almaq çağıran tərəfdə daha rahatdır.
+type FieldEmptyStats struct {
+	Total        int
+	EmptyTitle   int
+	EmptyAuthor  int
+	EmptyDate    int
+	EmptyContent int
+}

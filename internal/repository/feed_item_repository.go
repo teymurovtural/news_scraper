@@ -246,6 +246,42 @@ func (r *FeedItemRepository) GetBySourceAfterScrapedAt(ctx context.Context, sour
 	return items, nil
 }
 
+// GetFieldEmptyStats — sourceID-nin son `limit` scrape olunmuş item-i
+// arasında hər sahənin (title/author/date/content) neçəsinin boş
+// qaldığını sayır (bax domain/repositories.go-dakı ətraflı şərh).
+//
+// COUNT(*) FILTER (WHERE ...) — Postgres-in "şərtli say" sintaksisi, hər
+// sahə üçün ayrıca WHERE alt-sorğusu yazmaqdan (4 ayrı sorğu) qat-qat
+// effektivdir — tək keçidlə (bir alt-sorğu, LIMIT bir dəfə tətbiq olunur)
+// bütün sahələr hesablanır.
+func (r *FeedItemRepository) GetFieldEmptyStats(ctx context.Context, sourceID int64, limit int) (domain.FieldEmptyStats, error) {
+	query := `
+		SELECT
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE title = '')                       AS empty_title,
+			COUNT(*) FILTER (WHERE author = '')                      AS empty_author,
+			COUNT(*) FILTER (WHERE published_date = '')              AS empty_date,
+			COUNT(*) FILTER (WHERE content = '')                     AS empty_content
+		FROM (
+			SELECT title, author, published_date, content
+			FROM feed_items
+			WHERE source_id = $1 AND is_scraped = true
+			ORDER BY scraped_at DESC
+			LIMIT $2
+		) recent
+	`
+
+	var stats domain.FieldEmptyStats
+	err := r.db.QueryRow(ctx, query, sourceID, limit).Scan(
+		&stats.Total, &stats.EmptyTitle, &stats.EmptyAuthor, &stats.EmptyDate, &stats.EmptyContent,
+	)
+	if err != nil {
+		return domain.FieldEmptyStats{}, fmt.Errorf("feed_item_repository: GetFieldEmptyStats: %w", err)
+	}
+
+	return stats, nil
+}
+
 func (r *FeedItemRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM feed_items`).Scan(&count)
