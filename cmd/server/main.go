@@ -22,12 +22,7 @@ import (
 	"example.com/new-scraper/internal/service/exporter"
 	"example.com/new-scraper/internal/service/fetcher"
 	"example.com/new-scraper/internal/service/scraper"
-	"example.com/new-scraper/internal/service/scraper/sources/bleepingcomputer"
-	"example.com/new-scraper/internal/service/scraper/sources/cyberscoop"
-	"example.com/new-scraper/internal/service/scraper/sources/darkreading"
-	"example.com/new-scraper/internal/service/scraper/sources/itsecurityguru"
-	"example.com/new-scraper/internal/service/scraper/sources/securityweek"
-	"example.com/new-scraper/internal/service/scraper/sources/thehackernews"
+	"example.com/new-scraper/internal/service/scraper/generic"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -80,14 +75,18 @@ func main() {
 
 	fetcherService := fetcher.NewFetcherService(sourceRepo, feedItemRepo)
 
-	scrapers := map[string]scraper.Scraper{
-		"https://thehackernews.com":        thehackernews.New(pw, cfg.Playwright.Headless),
-		"https://www.darkreading.com":      darkreading.New(pw, cfg.Playwright.Headless),
-		"https://www.bleepingcomputer.com": bleepingcomputer.New(pw, cfg.Playwright.Headless),
-		"https://cyberscoop.com":           cyberscoop.New(pw, cfg.Playwright.Headless),
-		"https://www.itsecurityguru.org":   itsecurityguru.New(pw, cfg.Playwright.Headless),
-		"https://www.securityweek.com":     securityweek.New(pw, cfg.Playwright.Headless),
+	// DİZAYN DƏYİŞİKLİYİ: hər mənbə üçün ayrıca Go paketi (thehackernews,
+	// securityweek və s.) yazmaq əvəzinə, selector/davranış konfiqurasiyası
+	// scraper_configs.yaml-dan oxunur — yeni "normal" bir sayt əlavə etmək
+	// üçün YENİ KOD YAZMAĞA EHTİYAC QALMIR (bax internal/service/scraper/generic).
+	// Köhnə 6 sayta-xas paket hələ də repoda saxlanılıb (referans üçün),
+	// amma artıq buradan import edilmir.
+	scraperConfigs, err := generic.LoadConfigs("scraper_configs.yaml")
+	if err != nil {
+		slog.Error("scraper konfiqurasiyaları yüklənmədi", "error", err)
+		os.Exit(1)
 	}
+	scrapers := generic.BuildScrapers(pw, cfg.Playwright.Headless, scraperConfigs)
 	baseURL := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	scraperService := scraper.NewScraperService(feedItemRepo, scrapers, cfg.Poller.WorkerCount, baseURL)
 

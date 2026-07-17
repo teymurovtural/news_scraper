@@ -1,0 +1,216 @@
+# scraper_configs.yaml — hər mənbənin "necə scrape olunacağı" burada təsvir
+# olunur. Yeni bir "normal" sayt əlavə etmək üçün YENİ GO KODU YAZMAQ LAZIM
+# DEYİL — yalnız bu fayla yeni bir `sources:` girişi əlavə edin və serveri
+# yenidən başladın (compile lazım deyil).
+#
+# Struktur izahı: internal/service/scraper/generic/config.go (hər sahənin
+# mənası, hansı orijinal scraper-dən götürüldüyü orada şərh edilib).
+# Mövcud hook tipləri: internal/service/scraper/generic/hooks.go
+#   (wait_attached, scroll_bottom_top, inject_css, eval_js, click_if_visible, sleep)
+
+sources:
+  - prefix: "https://thehackernews.com"
+    name: "The Hacker News"
+    action_timeout_ms: 6000
+    pre_hooks:
+      - type: wait_attached
+        selector: "body"
+      - type: scroll_bottom_top
+        millis: 500
+    title:
+      selector: "h1.story-title a"
+    author:
+      selector: "span.author"
+      scope: "div.postmeta"
+      nth: 0
+    date:
+      selector: "span.author"
+      scope: "div.postmeta"
+      nth: 1
+    content_selector: "div#articlebody"
+    remove_selectors:
+      - "div#hiddenH1"
+      - "div.cf.note-b"
+      - "div.dog_two"
+      - "div.recap-ad"
+    resolve_lazy_images_in_content_html: true
+    featured_image:
+      selector: "div.separator img"
+      prepend: false   # artıq div#articlebody-nin içindədir
+    content_images:
+      selector: "div#articlebody img"
+      exclude_contains:
+        - "-d.png"
+        - "sponsor"
+    video:
+      mode: "iframe_youtube"
+      scope: "div#articlebody"
+
+  - prefix: "https://www.securityweek.com"
+    name: "SecurityWeek"
+    action_timeout_ms: 5000
+    pre_hooks:
+      - type: wait_attached
+        selector: "body"
+      - type: inject_css
+        css: ".pum-overlay, .pum-container { display: none !important; } body.pum-open { overflow: auto !important; }"
+      - type: sleep
+        millis: 300
+      - type: eval_js
+        repeat: 2
+        js: >
+          () => {
+            document.querySelectorAll('.pum-overlay, .pum-container').forEach(el => {
+              el.style.setProperty('display', 'none', 'important');
+              el.classList.remove('pum-active');
+            });
+            document.body.classList.remove('pum-open');
+            document.body.style.overflow = 'auto';
+          }
+    title:
+      selector: "header.zox-post-head-wrap h1"
+    author:
+      selector: "span.zox-author-name"
+    date:
+      selector: "div.zox-post-date-wrap"
+      trim_left_chars: "| "
+    excerpt:
+      selector: "span.zox-post-excerpt p"
+      is_html: false
+    mid_hooks:
+      - type: scroll_bottom_top
+        millis: 300
+      - type: wait_attached
+        selector: "div.zox-post-body p"
+      - type: eval_js
+        js: >
+          () => {
+            ['div.zox-post-ad-wrap', 'div[id^="placement_"]', 'div.zox-related-posts-wrap', 'div.zox-post-tags-wrap'].forEach(sel => {
+              document.querySelectorAll(sel).forEach(el => el.remove());
+            });
+          }
+    content_selector: "div.zox-post-body"
+    remove_selectors:
+      - "div.zox-post-ad-wrap"
+      - "div[id^='placement_']"
+    featured_image:
+      selector: "div.zox-post-img img"
+      prepend: true   # content_selector-un xaricindədir
+    content_images:
+      selector: "div.zox-post-body img"
+
+  - prefix: "https://www.bleepingcomputer.com"
+    name: "Bleeping Computer"
+    action_timeout_ms: 8000
+    pre_hooks:
+      - type: eval_js
+        js: >
+          () => {
+            const el = document.querySelector('div.cz-related-article-wrapp');
+            if (el) el.remove();
+          }
+    title:
+      selector: "div.article_section h1"
+    author:
+      selector: "a[rel='author'] span[itemprop='author'], a[rel='author sponsored'] span[itemprop='author']"
+    date:
+      selector: "li.cz-news-date"
+    content_selector: "div.article_section"
+    remove_selectors:
+      - "h1"   # title artıq ayrıca çıxarılıb, content_html-də təkrarlanmasın
+      - "div.cz-related-article-wrapp"
+      - "div.cz-news-share"
+      - "div[id^='ad_']"
+      - "div.adv-in"
+      - "div.newsletter-subscribe"
+    resolve_lazy_images_in_content_html: true
+    content_images:
+      selector: "div.article_section img"
+      domain_contains:
+        - "bleepstatic.com"
+      path_contains:
+        - "content/hl-images"
+        - "images/news"
+    video:
+      mode: "iframe_youtube"
+      scope: "div.article_section"
+
+  - prefix: "https://cyberscoop.com"
+    name: "CyberScoop"
+    action_timeout_ms: 5000
+    title:
+      selector: "h1.single-article__title"
+    author:
+      selector: "span.single-article__author-names a[rel='author']"
+      title_case: true
+    date:
+      selector: "time"
+    excerpt:
+      selector: "div.single-article__excerpt"
+      is_html: true
+    content_selector: "div.single-article__content-inner"
+    remove_selectors:
+      - "div.inline-ad"
+      - "div[class*='ad-']"
+      - "div.newsletter-signup"
+      - "div.related-articles"
+    featured_image:
+      selector: "figure.single-article__cover img.single-article__cover-image"
+      resolve_url: true
+      prepend: true   # content-inner-in xaricindədir (figure.single-article__cover)
+
+  - prefix: "https://www.itsecurityguru.org"
+    name: "IT Security Guru"
+    action_timeout_ms: 5000
+    title:
+      selector: "h1.jeg_post_title"
+    author:
+      selector: "div.jeg_meta_author a"
+      meta_fallback: "meta[name='author']"
+    date:
+      selector: "div.jeg_meta_date a"
+      meta_fallback: "meta[property='article:published_time']"
+      meta_first: true   # meta tag (ISO) DOM-dan daha etibarlıdır
+    content_selector: "div.content-inner"
+    remove_selectors:
+      - "div.sharedaddy"
+      - "div.jp-relatedposts"
+      - "div[id^='ad_']"
+      - "ins.adsbygoogle"
+      - ".jeg_post_tags"
+    featured_image:
+      selector: "div.jeg_featured img"
+      prepend: true   # content-inner-in xaricindədir
+    content_images:
+      selector: "div.content-inner img"
+
+  - prefix: "https://www.darkreading.com"
+    name: "Dark Reading"
+    action_timeout_ms: 5000
+    pre_hooks:
+      - type: click_if_visible
+        selector: "button.ub-emb-close"
+        millis: 5000
+      - type: sleep
+        millis: 1000
+    title:
+      selector: "h1.ArticleBase-HeaderTitle span.ArticleBase-LargeTitle"
+    author:
+      selector: "a.Contributors-ContributorName"
+      trim_right_chars: ","
+    date:
+      selector: "p.Contributors-Date"
+    content_selector: "div.TwoColumnLayout div[data-module='content']"
+    remove_selectors:
+      - "div[data-module='ad']"
+      - "div[data-module='newsletter']"
+      - "div[data-module='related']"
+      - "div.ContentSponsor"
+    featured_image:
+      selector: "img.ArticleBase-FeaturedImage"
+      prepend: true   # content konteynerinin xaricindədir
+    content_images:
+      selector: "img[data-testid='content-image']"
+    video:
+      mode: "anchor_href"
+      selector: "a.ytmVideoInfoVideoTitle"

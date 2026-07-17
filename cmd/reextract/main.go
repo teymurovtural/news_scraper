@@ -9,12 +9,7 @@ import (
 	"example.com/new-scraper/internal/platform/database"
 	"example.com/new-scraper/internal/repository"
 	"example.com/new-scraper/internal/service/scraper"
-	"example.com/new-scraper/internal/service/scraper/sources/bleepingcomputer"
-	"example.com/new-scraper/internal/service/scraper/sources/cyberscoop"
-	"example.com/new-scraper/internal/service/scraper/sources/darkreading"
-	"example.com/new-scraper/internal/service/scraper/sources/itsecurityguru"
-	"example.com/new-scraper/internal/service/scraper/sources/securityweek"
-	"example.com/new-scraper/internal/service/scraper/sources/thehackernews"
+	"example.com/new-scraper/internal/service/scraper/generic"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -63,16 +58,15 @@ func main() {
 
 	feedItemRepo := repository.NewFeedItemRepository(db)
 
-	// Qeyd: bu xəritə cmd/server/main.go-dakı ilə eynidir. Əgər gələcəkdə
-	// yeni bir mənbə əlavə etsən, ora ilə yanaşı bura da əlavə etməyi unutma.
-	scrapers := map[string]scraper.Scraper{
-		"https://thehackernews.com":        thehackernews.New(pw, cfg.Playwright.Headless),
-		"https://www.darkreading.com":      darkreading.New(pw, cfg.Playwright.Headless),
-		"https://www.bleepingcomputer.com": bleepingcomputer.New(pw, cfg.Playwright.Headless),
-		"https://cyberscoop.com":           cyberscoop.New(pw, cfg.Playwright.Headless),
-		"https://www.itsecurityguru.org":   itsecurityguru.New(pw, cfg.Playwright.Headless),
-		"https://www.securityweek.com":     securityweek.New(pw, cfg.Playwright.Headless),
+	// Qeyd: bu konfiqurasiya cmd/server/main.go-dakı ilə eynidir (ikisi də
+	// scraper_configs.yaml-dan oxuyur) — yeni mənbə əlavə etsən, YALNIZ
+	// scraper_configs.yaml-a əlavə etmək kifayətdir, bura toxunmağa ehtiyac
+	// yoxdur (bax internal/service/scraper/generic).
+	scraperConfigs, err := generic.LoadConfigs("scraper_configs.yaml")
+	if err != nil {
+		log.Fatal(fmt.Errorf("scraper konfiqurasiyaları yüklənmədi: %w", err))
 	}
+	scrapers := generic.BuildScrapers(pw, cfg.Playwright.Headless, scraperConfigs)
 
 	baseURL := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
 	scraperService := scraper.NewScraperService(feedItemRepo, scrapers, cfg.Poller.WorkerCount, baseURL)
