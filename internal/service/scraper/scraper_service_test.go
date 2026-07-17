@@ -80,6 +80,29 @@ func (r *fakeFeedItemRepo) GetEmptyContent(ctx context.Context, limit int) ([]do
 	return nil, nil
 }
 
+// fakeSourceRepo — domain.SourceRepository-nin bu testlər üçün saxta
+// implementasiyası. Yalnız ScraperService-in kompilyasiya üçün buna ehtiyacı
+// var (scrapeItems hər çağırışdan sonra sağlamlıq siqnalı göndərir) —
+// aşağıdakı testlərin özü bunun davranışını yoxlamır.
+type fakeSourceRepo struct{}
+
+func (f *fakeSourceRepo) Create(ctx context.Context, s *domain.Source) error  { return nil }
+func (f *fakeSourceRepo) GetAll(ctx context.Context) ([]domain.Source, error) { return nil, nil }
+func (f *fakeSourceRepo) GetActive(ctx context.Context) ([]domain.Source, error) {
+	return nil, nil
+}
+func (f *fakeSourceRepo) GetByID(ctx context.Context, id int64) (*domain.Source, error) {
+	return nil, nil
+}
+func (f *fakeSourceRepo) UpdateLastPolled(ctx context.Context, id int64) error     { return nil }
+func (f *fakeSourceRepo) UpdateLastExportedAt(ctx context.Context, id int64) error { return nil }
+func (f *fakeSourceRepo) IncrementFailCount(ctx context.Context, id int64) (bool, error) {
+	return false, nil
+}
+func (f *fakeSourceRepo) ResetFailCount(ctx context.Context, id int64) error { return nil }
+func (f *fakeSourceRepo) Deactivate(ctx context.Context, id int64) error     { return nil }
+func (f *fakeSourceRepo) Activate(ctx context.Context, id int64) error       { return nil }
+
 // TestGroupAndChunk_DoesNotMixSources — bu, söhbətin ilk (və ən vacib)
 // bug-ının regressiya testidir: mənbəyə görə qruplaşdırmadan əvvəl, qarışıq
 // sıra ilə gələn item-lər (A,A,A,B,B,B,B,A,A kimi) 5-lik chunk-lara bölünəndə
@@ -95,7 +118,7 @@ func TestGroupAndChunk_DoesNotMixSources(t *testing.T) {
 		"https://site-b.com": scraperB,
 	}
 
-	svc := NewScraperService(nil, scrapers, 1, "")
+	svc := NewScraperService(nil, &fakeSourceRepo{}, scrapers, 1, "")
 
 	// Qarışıq sıra — real GetUnscraped() nəticəsini simulyasiya edir
 	// (fərqli mənbələr eyni fetched_at civarında qarışıq sıraya düşə bilir).
@@ -160,7 +183,7 @@ func TestScrapeItems_UsesCorrectScraperPerItem(t *testing.T) {
 	}
 
 	repo := newFakeFeedItemRepo()
-	svc := NewScraperService(repo, scrapers, 2, "")
+	svc := NewScraperService(repo, &fakeSourceRepo{}, scrapers, 2, "")
 
 	items := []domain.FeedItem{
 		{ID: 1, Link: "https://site-a.com/1"},

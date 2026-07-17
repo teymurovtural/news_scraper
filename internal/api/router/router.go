@@ -38,6 +38,7 @@ func NewRouter(
 	protected.HandleFunc("GET /api/v1/sources/{id}", sourceHandler.GetByID)
 	protected.HandleFunc("POST /api/v1/sources", sourceHandler.Create)
 	protected.HandleFunc("DELETE /api/v1/sources/{id}", sourceHandler.Delete)
+	protected.HandleFunc("POST /api/v1/sources/{id}/activate", sourceHandler.Activate)
 
 	mux := http.NewServeMux()
 

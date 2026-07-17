@@ -60,8 +60,18 @@ func (s *FetcherService) FetchAll(ctx context.Context) error {
 	for _, source := range sources {
 		if err := s.FetchSource(ctx, source); err != nil {
 			slog.Error("fetcher: mənbə çəkilmədi", "source", source.Name, "feed_url", source.FeedURL, "error", err)
-			if incErr := s.sourceRepo.IncrementFailCount(ctx, source.ID); incErr != nil {
+
+			deactivated, incErr := s.sourceRepo.IncrementFailCount(ctx, source.ID)
+			if incErr != nil {
 				slog.Error("fetcher: fail_count yenilənmədi", "source", source.Name, "error", incErr)
+			} else if deactivated {
+				// XƏBƏRDARLIQ (dizayn dəyişikliyi): əvvəllər bu, tamamilə
+				// sükutla baş verirdi — mənbə 20-ci ardıcıl fail-də özü-özünə
+				// deaktiv olur, amma heç bir log/bildiriş yox idi, yalnız
+				// sources siyahısına təsadüfən baxanda görünürdü. İndi bu an
+				// AÇIQ şəkildə loglanır ki, dərhal diqqətə çatsın. Geri
+				// qaytarmaq üçün: POST /api/v1/sources/{id}/activate.
+				slog.Warn("fetcher: XƏBƏRDARLIQ — mənbə ardıcıl uğursuzluqlara görə avtomatik deaktiv edildi", "source", source.Name, "source_id", source.ID)
 			}
 			continue
 		}

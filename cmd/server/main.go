@@ -88,7 +88,7 @@ func main() {
 	}
 	scrapers := generic.BuildScrapers(pw, cfg.Playwright.Headless, scraperConfigs)
 	baseURL := fmt.Sprintf("http://localhost:%s", cfg.Server.Port)
-	scraperService := scraper.NewScraperService(feedItemRepo, scrapers, cfg.Poller.WorkerCount, baseURL)
+	scraperService := scraper.NewScraperService(feedItemRepo, sourceRepo, scrapers, cfg.Poller.WorkerCount, baseURL)
 
 	exporterService := exporter.NewExporterService(sourceRepo, feedItemRepo)
 

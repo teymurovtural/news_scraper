@@ -27,7 +27,16 @@ type SourceRepository interface {
 	GetByID(ctx context.Context, id int64) (*Source, error)
 	UpdateLastPolled(ctx context.Context, id int64) error
 	UpdateLastExportedAt(ctx context.Context, id int64) error
-	IncrementFailCount(ctx context.Context, id int64) error
+	// IncrementFailCount — fail_count-u 1 artırır. 20-yə çatsa, mənbə
+	// avtomatik is_active=false olur (bax source_repository.go). Qaytardığı
+	// bool DƏQİQ BU ÇAĞIRIŞ mənbəni deaktiv ETDİYİNİ bildirir (yəni əvvəl
+	// aktiv idi, indi deaktiv oldu) — çağıran tərəf bunu bir dəfəlik
+	// XƏBƏRDARLIQ loglamaq üçün istifadə edir, hər fail-də yox.
+	IncrementFailCount(ctx context.Context, id int64) (deactivated bool, err error)
+	// ResetFailCount — fail_count-u sıfırlayır. RSS-fetch UĞURU ARTIQ bunu
+	// avtomatik etmir (bax UpdateLastPolled şərhi) — bu, YALNIZ real content
+	// axını təsdiqlənəndə (məs. bir item uğurla scrape olunanda) çağırılır.
+	ResetFailCount(ctx context.Context, id int64) error
 	// Deactivate — mənbəni "soft delete" edir: sətir DB-də qalır (tarixi
 	// data, ona aid feed_items itmir), yalnız is_active=false olur və
 	// artıq fetcher/scraper tərəfindən poll olunmur (bax GetActive).
@@ -35,4 +44,10 @@ type SourceRepository interface {
 	// təhlükəsizlik məlumat toplayan bir alətdə tarixi qeydlərin
 	// itməməsi vacibdir.
 	Deactivate(ctx context.Context, id int64) error
+	// Activate — Deactivate-in əksi: is_active=true edir VƏ fail_count-u
+	// sıfırlayır (təzə başlanğıc). Həm əl ilə (əvvəllər DELETE edilmiş bir
+	// mənbəni geri qaytarmaq) həm də IncrementFailCount-un 20-limitinə görə
+	// AVTOMATİK deaktiv olmuş bir mənbəni yenidən aktivləşdirmək üçün istifadə
+	// olunur. Sətir tapılmasa ErrSourceNotFound qaytarır.
+	Activate(ctx context.Context, id int64) error
 }

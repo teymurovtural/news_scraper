@@ -53,8 +53,12 @@ func (f *fakeSourceRepo) GetByID(ctx context.Context, id int64) (*domain.Source,
 }
 func (f *fakeSourceRepo) UpdateLastPolled(ctx context.Context, id int64) error     { return nil }
 func (f *fakeSourceRepo) UpdateLastExportedAt(ctx context.Context, id int64) error { return nil }
-func (f *fakeSourceRepo) IncrementFailCount(ctx context.Context, id int64) error   { return nil }
-func (f *fakeSourceRepo) Deactivate(ctx context.Context, id int64) error           { return nil }
+func (f *fakeSourceRepo) IncrementFailCount(ctx context.Context, id int64) (bool, error) {
+	return false, nil
+}
+func (f *fakeSourceRepo) ResetFailCount(ctx context.Context, id int64) error { return nil }
+func (f *fakeSourceRepo) Deactivate(ctx context.Context, id int64) error     { return nil }
+func (f *fakeSourceRepo) Activate(ctx context.Context, id int64) error       { return nil }
 
 // fakePinger — HealthHandler testləri üçün saxta Pinger. Default olaraq
 // həmişə uğurlu (DB "sağlamdır") davranır.
@@ -145,6 +149,31 @@ func TestDeleteSource_RequiresAuthAndWorksWithCorrectKey(t *testing.T) {
 	r.ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusNoContent {
 		t.Errorf("DELETE /sources/1 doğru key ilə 204 qaytarmalıdır, alındı: %d", rec2.Code)
+	}
+}
+
+// TestActivateSource_RequiresAuthAndWorksWithCorrectKey — yeni POST
+// /api/v1/sources/{id}/activate route-unun (Deactivate-in əksi — həm əl
+// ilə, həm avtomatik deaktiv olmuş mənbələri geri qaytarmaq üçün) həm auth
+// arxasında qorunduğunu, həm də düzgün key ilə işlədiyini təsdiqləyir.
+func TestActivateSource_RequiresAuthAndWorksWithCorrectKey(t *testing.T) {
+	r := newTestRouter("secret123")
+
+	// Header-siz — 401
+	req1 := httptest.NewRequest("POST", "/api/v1/sources/1/activate", nil)
+	rec1 := httptest.NewRecorder()
+	r.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusUnauthorized {
+		t.Errorf("POST /sources/1/activate header-siz 401 qaytarmalıdır, alındı: %d", rec1.Code)
+	}
+
+	// Düzgün key ilə — 204
+	req2 := httptest.NewRequest("POST", "/api/v1/sources/1/activate", nil)
+	req2.Header.Set("X-API-Key", "secret123")
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusNoContent {
+		t.Errorf("POST /sources/1/activate doğru key ilə 204 qaytarmalıdır, alındı: %d", rec2.Code)
 	}
 }
 

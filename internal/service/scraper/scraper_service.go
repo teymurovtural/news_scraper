@@ -21,18 +21,20 @@ type ScraperEntry struct {
 
 type ScraperService struct {
 	feedItemRepo domain.FeedItemRepository
+	sourceRepo   domain.SourceRepository // sağlamlıq siqnalları (fail/reset) üçün — bax updateSourceHealth
 	scrapers     []ScraperEntry
 	workerCount  int
 	baseURL      string // "/view" linklərini qurmaq üçün, məs. http://localhost:8082
 }
 
-func NewScraperService(feedItemRepo domain.FeedItemRepository, scrapers map[string]Scraper, workerCount int, baseURL string) *ScraperService {
+func NewScraperService(feedItemRepo domain.FeedItemRepository, sourceRepo domain.SourceRepository, scrapers map[string]Scraper, workerCount int, baseURL string) *ScraperService {
 	entries := make([]ScraperEntry, 0, len(scrapers))
 	for prefix, sc := range scrapers {
 		entries = append(entries, ScraperEntry{Prefix: prefix, Scraper: sc})
 	}
 	return &ScraperService{
 		feedItemRepo: feedItemRepo,
+		sourceRepo:   sourceRepo,
 		scrapers:     entries,
 		workerCount:  workerCount,
 		baseURL:      baseURL,
@@ -306,6 +308,62 @@ func (s *ScraperService) scrapeItems(ctx context.Context, items []domain.FeedIte
 		failedItems = append(failedItems, item)
 	}
 
+	s.updateSourceHealth(ctx, items, failedItems)
+
 	slog.Info("scraper_service: chunk tamamlandı", "success", success, "failed", failed)
 	return failedItems
+}
+
+// updateSourceHealth — bu scrapeItems çağırışında iştirak edən hər mənbə
+// üçün fail_count-u yeniləyir. Məntiq: mənbədən ən azı BİR item uğurla
+// scrape olunubsa (yəni content faktiki axır), sağlam sayılır və sıfırlanır.
+// Yalnız cəhd edilən bütün item-lər uğursuz olubsa (tam sükut), fail_count
+// artırılır.
+//
+// DİZAYN QEYDİ: bu, item-səviyyəli deyil, mənbə-səviyyəli (aggregate) qərardır
+// — bir mənbədən 9 item uğurlu, 1-i uğursuz olsa, bu "əsasən sağlamdır" sayılır
+// və reset edilir (yalnız o 1 item retry növbəsinə düşür, mənbənin ümumi
+// sağlamlığına təsir etmir). Bu, RSS-in yaxşı işlədiyi, amma scrape-in HƏR
+// item üçün uğursuz olduğu halı (məs. sayt HTML strukturunu dəyişib) tutmaq
+// üçündür — əvvəllər belə hallar heç cür aşkarlanmırdı (bax
+// source_repository.go-dakı UpdateLastPolled şərhi).
+func (s *ScraperService) updateSourceHealth(ctx context.Context, attempted, failed []domain.FeedItem) {
+	if s.sourceRepo == nil {
+		return // testlərdə/nadir hallarda sourceRepo verilməyə bilər
+	}
+
+	failedIDs := make(map[int64]bool, len(failed))
+	for _, item := range failed {
+		failedIDs[item.ID] = true
+	}
+
+	succeeded := make(map[int64]bool)
+	allFailed := make(map[int64]bool)
+	for _, item := range attempted {
+		if failedIDs[item.ID] {
+			allFailed[item.SourceID] = true
+		} else {
+			succeeded[item.SourceID] = true
+		}
+	}
+
+	for sourceID := range succeeded {
+		if err := s.sourceRepo.ResetFailCount(ctx, sourceID); err != nil {
+			slog.Error("scraper_service: fail_count sıfırlanmadı", "source_id", sourceID, "error", err)
+		}
+	}
+
+	for sourceID := range allFailed {
+		if succeeded[sourceID] {
+			continue // bu mənbədən ən azı 1 uğur var idi, tam uğursuz sayılmır
+		}
+		deactivated, err := s.sourceRepo.IncrementFailCount(ctx, sourceID)
+		if err != nil {
+			slog.Error("scraper_service: fail_count artırılmadı", "source_id", sourceID, "error", err)
+			continue
+		}
+		if deactivated {
+			slog.Warn("scraper_service: XƏBƏRDARLIQ — mənbə ardıcıl scrape uğursuzluqlarına görə avtomatik deaktiv edildi", "source_id", sourceID)
+		}
+	}
 }

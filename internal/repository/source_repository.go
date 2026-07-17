@@ -125,9 +125,21 @@ func (r *SourceRepository) Create(ctx context.Context, s *domain.Source) error {
 }
 
 func (r *SourceRepository) UpdateLastPolled(ctx context.Context, id int64) error {
+	// DİZAYN DƏYİŞİKLİYİ: əvvəllər bu sorğu "fail_count = 0" da edirdi —
+	// yəni RSS fetch-i uğurlu olan kimi sayğac sıfırlanırdı, HANSI KI scrape
+	// mərhələsinin (Playwright) nəticəsindən tamamilə xəbərsiz idi. Nəticədə:
+	// RSS işləyir, amma sayt HTML strukturunu dəyişdiyi üçün HƏR məqalənin
+	// scrape-i uğursuz olsa belə, fail_count hər 15 dəqiqədə bir yenidən 0-a
+	// düşürdü — 20-lik həddə heç vaxt çatmırdı, mənbə "sağlam" görünməyə
+	// davam edirdi, halbuki heç bir yeni content faktiki gəlmirdi.
+	//
+	// İndi fail_count YALNIZ real content axını təsdiqlənəndə (bir item
+	// uğurla scrape olunanda, bax scraper_service.go-dakı ResetFailCount
+	// çağırışı) sıfırlanır. RSS-in sadəcə cavab verməsi artıq "sağlamlıq"
+	// siqnalı sayılmır.
 	query := `
 		UPDATE sources
-		SET last_polled_at = NOW(), fail_count = 0
+		SET last_polled_at = NOW()
 		WHERE id = $1
 	`
 
@@ -154,17 +166,55 @@ func (r *SourceRepository) UpdateLastExportedAt(ctx context.Context, id int64) e
 	return nil
 }
 
-func (r *SourceRepository) IncrementFailCount(ctx context.Context, id int64) error {
+// IncrementFailCount — fail_count-u 1 artırır, 20-yə çatsa mənbəni
+// avtomatik deaktiv edir (bax domain/repositories.go-dakı şərh).
+//
+// BUG FIX / YENİ QAYIDIŞ DƏYƏRİ: əvvəllər bu funksiya yalnız error
+// qaytarırdı — çağıran tərəf mənbənin məhz BU çağırışla deaktiv olduğunu
+// heç vaxt bilmirdi (sükutla baş verirdi, heç bir log/xəbərdarlıq yox idi).
+// İndi UPDATE-in RETURNING bəndi ilə, DƏYİŞİKLİKDƏN SONRAKI is_active
+// dəyərini birbaşa geri oxuyuruq — çağıran (fetcher.go, scraper_service.go)
+// bunu "əvvəl aktiv idi, indi deaktiv oldu" anını bir dəfəlik XƏBƏRDARLIQ
+// loglamaq üçün istifadə edir.
+func (r *SourceRepository) IncrementFailCount(ctx context.Context, id int64) (bool, error) {
 	query := `
 		UPDATE sources
 		SET fail_count = fail_count + 1,
 		    is_active = CASE WHEN fail_count + 1 >= 20 THEN false ELSE is_active END
 		WHERE id = $1
+		RETURNING is_active
+	`
+
+	var isActive bool
+	err := r.db.QueryRow(ctx, query, id).Scan(&isActive)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, domain.ErrSourceNotFound
+		}
+		return false, fmt.Errorf("source_repository: IncrementFailCount: %w", err)
+	}
+
+	// isActive=false bu andan sonrakı vəziyyətdir — deməli məhz bu çağırış
+	// mənbəni deaktiv etdi (əgər artıq deaktiv idisə, CASE şərti heç işə
+	// düşməzdi, çünki fail_count onsuz da artıq görünməzdi — GetActive
+	// belə mənbələri ümumiyyətlə qaytarmır, ona görə IncrementFailCount
+	// praktikada yalnız hələ aktiv olan mənbələr üçün çağırılır).
+	return !isActive, nil
+}
+
+// ResetFailCount — fail_count-u sıfırlayır. Bax domain/repositories.go-dakı
+// şərh: bu, RSS-fetch uğurundan DEYİL, yalnız real scrape uğurundan sonra
+// çağırılmalıdır.
+func (r *SourceRepository) ResetFailCount(ctx context.Context, id int64) error {
+	query := `
+		UPDATE sources
+		SET fail_count = 0
+		WHERE id = $1
 	`
 
 	_, err := r.db.Exec(ctx, query, id)
 	if err != nil {
-		return fmt.Errorf("source_repository: IncrementFailCount: %w", err)
+		return fmt.Errorf("source_repository: ResetFailCount: %w", err)
 	}
 
 	return nil
@@ -183,6 +233,29 @@ func (r *SourceRepository) Deactivate(ctx context.Context, id int64) error {
 	tag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("source_repository: Deactivate: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrSourceNotFound
+	}
+
+	return nil
+}
+
+// Activate — Deactivate-in əksi (bax domain/repositories.go-dakı şərh).
+// fail_count-u da sıfırlayır ki, mənbə "təzə başlanğıcla" geri qayıtsın —
+// əks halda, əl ilə aktivləşdirilən kimi, hələ 20-ə yaxın qalmış köhnə
+// fail_count DB-də qalardı və bir-iki yeni uğursuzluqla YENİDƏN avtomatik
+// deaktiv olardı.
+func (r *SourceRepository) Activate(ctx context.Context, id int64) error {
+	query := `
+		UPDATE sources
+		SET is_active = true, fail_count = 0
+		WHERE id = $1
+	`
+
+	tag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("source_repository: Activate: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrSourceNotFound

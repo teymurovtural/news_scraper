@@ -72,6 +72,31 @@ func (h *SourceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Activate — Delete-in (soft-delete) əksi. Ya əl ilə DELETE edilmiş bir
+// mənbəni geri qaytarmaq üçün, ya da IncrementFailCount-un 20-lik həddinə
+// görə AVTOMATİK deaktiv olmuş bir mənbəni yenidən aktivləşdirmək üçün
+// istifadə olunur (bax scraper_service.go/fetcher.go-dakı "XƏBƏRDARLIQ —
+// mənbə ... avtomatik deaktiv edildi" log sətri — bu, məhz həmin mənbəni
+// geri qaytarmaq üçün endpoint-dir). Uğurlu olsa 204, mənbə tapılmasa 404.
+func (h *SourceHandler) Activate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "yanlış ID")
+		return
+	}
+
+	if err := h.sourceRepo.Activate(r.Context(), id); err != nil {
+		if errors.Is(err, domain.ErrSourceNotFound) {
+			writeError(w, http.StatusNotFound, "mənbə tapılmadı")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "mənbə aktivləşdirilmədi")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // maxCreateBodySize — POST /sources body-si üçün yuxarı limit. Limitsiz
 // oxunan body server-i (yaddaş baxımından) DoS-a açıq edir.
 const maxCreateBodySize = 1 << 20 // 1 MB
