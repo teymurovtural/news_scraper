@@ -33,6 +33,11 @@ func NewRouter(
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/v1/items", itemHandler.GetAll)
 	protected.HandleFunc("GET /api/v1/items/{id}", itemHandler.GetByID)
+	// GET /api/v1/cves — bax item_handler.go-dakı GetCVESummary şərhi:
+	// bu, "kəşf" endpoint-idir (2+ mənbədə yazılan bütün CVE-lər), konkret
+	// item ID-si tələb ETMİR — GET /api/v1/items/{id}-dəki related_items-dən
+	// fərqli olaraq.
+	protected.HandleFunc("GET /api/v1/cves", itemHandler.GetCVESummary)
 
 	protected.HandleFunc("GET /api/v1/sources", sourceHandler.GetAll)
 	protected.HandleFunc("GET /api/v1/sources/{id}", sourceHandler.GetByID)

@@ -24,6 +24,21 @@ type FeedItemRepository interface {
 	// RelatedFeedItem DTO qaytarır (tam content YOX) — bax cve.go və
 	// migrations/011_cve_ids.sql.
 	GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]RelatedFeedItem, error)
+	// UpdateRelatedCVEFlags — cveIDs-dən HƏR HANSI BİRİNİ paylaşan bütün
+	// item-lərin (KÖHNƏ + bu yeni scrape olunan, hamısı DAXİL) has_related_cve
+	// sahəsini yenidən hesablayır. Scrape zamanı, bir item CVE ID-si ilə
+	// yazılandan DƏRHAL SONRA çağırılmalıdır (bax scraper_service.go) —
+	// əks halda, məsələn A məqaləsi bu gün, B məqaləsi 3 gün sonra eyni
+	// CVE-ni yazsa, A-nın bayrağı köhnəlmiş (false) qalar, çünki A
+	// scrape olunanda B hələ mövcud deyildi.
+	UpdateRelatedCVEFlags(ctx context.Context, cveIDs []string) error
+	// GetCVESummary — YALNIZ 2+ məqalədə keçən (yəni həqiqətən əlaqəli
+	// olan) bütün CVE-ləri, hər birinin məqalə siyahısı ilə birlikdə
+	// qaytarır. GET /api/v1/cves endpoint-i üçün — "hansı hadisələr
+	// birdən çox mənbədə yazılıb" sualına birbaşa cavab (bax
+	// GetRelatedByCVE-dən fərqli olaraq, bu, KONKRET bir item ID-si
+	// tələb etmir — tam "kəşf" görünüşüdür).
+	GetCVESummary(ctx context.Context) ([]CVESummary, error)
 }
 
 type SourceRepository interface {

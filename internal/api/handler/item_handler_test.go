@@ -41,6 +41,12 @@ func (f *fakeRepoWithItem) GetEmptyContent(ctx context.Context, limit int) ([]do
 func (f *fakeRepoWithItem) GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]domain.RelatedFeedItem, error) {
 	return f.related, nil
 }
+func (f *fakeRepoWithItem) UpdateRelatedCVEFlags(ctx context.Context, cveIDs []string) error {
+	return nil
+}
+func (f *fakeRepoWithItem) GetCVESummary(ctx context.Context) ([]domain.CVESummary, error) {
+	return nil, nil
+}
 
 // TestView_RendersContentHTMLVerbatim — DİZAYN DƏYİŞİKLİYİ: video embed
 // artıq item_handler-də deyil, CleanArticleHTML-də (bax

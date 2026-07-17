@@ -43,6 +43,12 @@ func (f *fakeFeedItemRepo) GetEmptyContent(ctx context.Context, limit int) ([]do
 func (f *fakeFeedItemRepo) GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]domain.RelatedFeedItem, error) {
 	return nil, nil
 }
+func (f *fakeFeedItemRepo) UpdateRelatedCVEFlags(ctx context.Context, cveIDs []string) error {
+	return nil
+}
+func (f *fakeFeedItemRepo) GetCVESummary(ctx context.Context) ([]domain.CVESummary, error) {
+	return nil, nil
+}
 
 type fakeSourceRepo struct{}
 

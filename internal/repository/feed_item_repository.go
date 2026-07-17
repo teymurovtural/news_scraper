@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -28,7 +29,7 @@ func scanFeedItem(row interface {
 		&item.ID, &item.SourceID, &item.Title, &item.Link,
 		&author, &publishedDate, &content, &contentHTML, &viewURL,
 		&item.Images, &videoURL, &item.IsScraped, &item.PublishedAt, &item.FetchedAt, &item.ScrapedAt,
-		&item.CVEIDs,
+		&item.CVEIDs, &item.HasRelatedCVE,
 	)
 	if err != nil {
 		return domain.FeedItem{}, err
@@ -57,7 +58,7 @@ func scanFeedItem(row interface {
 const selectFields = `
 	SELECT id, source_id, title, link, author, published_date,
 	       content, content_html, view_url, images, video_url, is_scraped, published_at, fetched_at, scraped_at,
-	       cve_ids
+	       cve_ids, has_related_cve
 	FROM feed_items`
 
 func (r *FeedItemRepository) Create(ctx context.Context, item *domain.FeedItem) error {
@@ -252,6 +253,96 @@ func (r *FeedItemRepository) Count(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("feed_item_repository: Count: %w", err)
 	}
 	return count, nil
+}
+
+// UpdateRelatedCVEFlags — cveIDs-dən HƏR HANSI BİRİNİ paylaşan bütün
+// item-lərin has_related_cve sahəsini YENİDƏN hesablayır (bax
+// domain/repositories.go-dakı ətraflı şərh — niyə bu, "geriyə-dönük"
+// olmalıdır).
+//
+// CTE-lər ilə: əvvəlcə "təsirlənən" item-lərin ID-lərini tapırıq (affected),
+// sonra onların ÜMUMİ sayını hesablayırıq (cnt), sonra hamısının bayrağını
+// "say > 1"-ə bərabər edirik — tək (2-dən az) item qalıbsa, bayraq false-a
+// da düşə bilər (nəzəri olaraq, məs. CVE-lər heç vaxt silinmədiyi üçün bu
+// praktikada baş vermir, amma sorğu hər iki istiqamətdə də düzgündür).
+func (r *FeedItemRepository) UpdateRelatedCVEFlags(ctx context.Context, cveIDs []string) error {
+	if len(cveIDs) == 0 {
+		return nil
+	}
+
+	query := `
+		WITH affected AS (
+			SELECT id FROM feed_items WHERE cve_ids && $1
+		),
+		cnt AS (
+			SELECT COUNT(*) AS c FROM affected
+		)
+		UPDATE feed_items
+		SET has_related_cve = (SELECT c FROM cnt) > 1
+		WHERE id IN (SELECT id FROM affected)
+	`
+
+	_, err := r.db.Exec(ctx, query, cveIDs)
+	if err != nil {
+		return fmt.Errorf("feed_item_repository: UpdateRelatedCVEFlags: %w", err)
+	}
+
+	return nil
+}
+
+// GetCVESummary — YALNIZ 2+ məqalədə keçən CVE-ləri, hər birinin məqalə
+// siyahısı ilə birlikdə qaytarır (bax domain/repositories.go-dakı şərh).
+//
+// SQL MƏNTİQİ: daxili sub-sorğu unnest(cve_ids) ilə hər item-in HƏR CVE-si
+// üçün ayrı sətir yaradır (bir item 3 CVE yazırsa, 3 sətir), sonra bunu
+// CVE-yə görə qruplaşdırıb (GROUP BY), 2-dən az olanları at (HAVING).
+// jsonb_agg ilə hər qrupun məqalələrini birbaşa Postgres-in özündə JSON-a
+// yığırıq — Go tərəfində əlavə N+1 sorğu (hər CVE üçün ayrı SELECT) lazım
+// olmur, tək sorğu ilə hər şey gəlir.
+func (r *FeedItemRepository) GetCVESummary(ctx context.Context) ([]domain.CVESummary, error) {
+	query := `
+		SELECT sub.cve,
+		       COUNT(*) AS cnt,
+		       jsonb_agg(
+		           jsonb_build_object('id', fi.id, 'title', fi.title, 'source_name', s.name, 'link', fi.link)
+		           ORDER BY fi.published_at DESC NULLS LAST
+		       ) AS items
+		FROM (
+			SELECT id, unnest(cve_ids) AS cve
+			FROM feed_items
+			WHERE cve_ids != '{}'
+		) sub
+		JOIN feed_items fi ON fi.id = sub.id
+		JOIN sources s ON s.id = fi.source_id
+		GROUP BY sub.cve
+		HAVING COUNT(*) > 1
+		ORDER BY cnt DESC, sub.cve
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("feed_item_repository: GetCVESummary: %w", err)
+	}
+	defer rows.Close()
+
+	summaries := make([]domain.CVESummary, 0)
+	for rows.Next() {
+		var cveID string
+		var count int
+		var itemsJSON []byte
+		if err := rows.Scan(&cveID, &count, &itemsJSON); err != nil {
+			return nil, fmt.Errorf("feed_item_repository: GetCVESummary scan: %w", err)
+		}
+
+		var items []domain.RelatedFeedItem
+		if err := json.Unmarshal(itemsJSON, &items); err != nil {
+			return nil, fmt.Errorf("feed_item_repository: GetCVESummary jsonb parse: %w", err)
+		}
+
+		summaries = append(summaries, domain.CVESummary{CVEID: cveID, Count: count, Items: items})
+	}
+
+	return summaries, nil
 }
 
 // GetRelatedByCVE — cveIDs-dən HƏR HANSI BİRİNİ paylaşan (Postgres-in "&&"

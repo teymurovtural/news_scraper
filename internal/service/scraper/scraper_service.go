@@ -291,6 +291,19 @@ func (s *ScraperService) scrapeItems(ctx context.Context, items []domain.FeedIte
 							continue
 						}
 
+						// GERİYƏ-DÖNÜK BAYRAQ YENİLƏMƏSİ: bu item CVE ilə
+						// yazılıbsa, onu paylaşan BÜTÜN item-lərin (köhnə +
+						// bu yeni) has_related_cve sahəsi yenidən hesablanır
+						// (bax domain/repositories.go-dakı UpdateRelatedCVEFlags
+						// şərhi — niyə bu addım vacibdir). Best-effort: xəta
+						// olsa belə əsas item artıq uğurla yazılıb, ona görə
+						// item-i uğursuz SAYMIRIQ, sadəcə loglayırıq.
+						if len(cveIDs) > 0 {
+							if err := s.feedItemRepo.UpdateRelatedCVEFlags(ctx, cveIDs); err != nil {
+								slog.Error("scraper_service: has_related_cve yenilənmədi", "item_id", r.Item.ID, "error", err)
+							}
+						}
+
 						slog.Info("scraper_service: scrape uğurlu", "item_id", r.Item.ID, "title", r.Content.Title)
 						mu.Lock()
 						success++

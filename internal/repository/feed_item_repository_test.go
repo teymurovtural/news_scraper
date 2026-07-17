@@ -15,7 +15,7 @@ import (
 var feedItemColumns = []string{
 	"id", "source_id", "title", "link", "author", "published_date",
 	"content", "content_html", "view_url", "images", "video_url",
-	"is_scraped", "published_at", "fetched_at", "scraped_at", "cve_ids",
+	"is_scraped", "published_at", "fetched_at", "scraped_at", "cve_ids", "has_related_cve",
 }
 
 func TestGetByID_Found(t *testing.T) {
@@ -32,7 +32,7 @@ func TestGetByID_Found(t *testing.T) {
 		int64(77), int64(1), "Test Title", "https://example.com/a",
 		&author, (*string)(nil), (*string)(nil), (*string)(nil), (*string)(nil),
 		[]domain.ImageItem{}, (*string)(nil), true,
-		(*time.Time)(nil), fetchedAt, (*time.Time)(nil), []string{},
+		(*time.Time)(nil), fetchedAt, (*time.Time)(nil), []string{}, false,
 	)
 
 	mock.ExpectQuery("SELECT").WithArgs(int64(77)).WillReturnRows(rows)

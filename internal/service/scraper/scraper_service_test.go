@@ -82,6 +82,12 @@ func (r *fakeFeedItemRepo) GetEmptyContent(ctx context.Context, limit int) ([]do
 func (r *fakeFeedItemRepo) GetRelatedByCVE(ctx context.Context, cveIDs []string, excludeID int64, limit int) ([]domain.RelatedFeedItem, error) {
 	return nil, nil
 }
+func (r *fakeFeedItemRepo) UpdateRelatedCVEFlags(ctx context.Context, cveIDs []string) error {
+	return nil
+}
+func (r *fakeFeedItemRepo) GetCVESummary(ctx context.Context) ([]domain.CVESummary, error) {
+	return nil, nil
+}
 
 // fakeSourceRepo — domain.SourceRepository-nin bu testlər üçün saxta
 // implementasiyası. Yalnız ScraperService-in kompilyasiya üçün buna ehtiyacı

@@ -169,6 +169,25 @@ func (h *ItemHandler) View(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(page))
 }
 
+// GetCVESummary — GET /api/v1/cves. YALNIZ 2+ məqalədə keçən (yəni
+// həqiqətən əlaqələndirmə mənası olan) CVE-lərin siyahısını, hər birinin
+// məqalələri ilə birlikdə qaytarır. Bu, "kəşf" endpoint-idir — GetByID-dəki
+// related_items-dən (konkret bir item ID-si tələb edir) fərqli olaraq,
+// heç bir ID bilmədən "hansı hadisələr birdən çox mənbədə yazılıb?"
+// sualına birbaşa cavab verir.
+func (h *ItemHandler) GetCVESummary(w http.ResponseWriter, r *http.Request) {
+	summaries, err := h.feedItemRepo.GetCVESummary(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CVE siyahısı alınmadı")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cves":  summaries,
+		"total": len(summaries),
+	})
+}
+
 func parsePagination(r *http.Request) (limit, offset int) {
 	limit = 20
 	offset = 0

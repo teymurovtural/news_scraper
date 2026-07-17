@@ -23,11 +23,19 @@ type FeedItem struct {
 	// ["CVE-2026-58644"]). Eyni CVE-ni paylaşan məqalələri
 	// əlaqələndirmək üçün istifadə olunur (bax
 	// internal/service/scraper/cve.go).
-	CVEIDs      []string   `json:"cve_ids,omitempty"`
-	IsScraped   bool       `json:"is_scraped"`
-	PublishedAt *time.Time `json:"published_at"`
-	FetchedAt   time.Time  `json:"fetched_at"`
-	ScrapedAt   *time.Time `json:"scraped_at"`
+	CVEIDs []string `json:"cve_ids,omitempty"`
+	// HasRelatedCVE — bu item-in CVE ID-lərindən HƏR HANSI BİRİ başqa bir
+	// item-də də varmı? (hesablanmış/keşlənmiş sahə, bax
+	// migrations/012_has_related_cve.sql). Siyahı görünüşündə (GET
+	// /api/v1/items) əlavə sorğu etmədən "bu xəbər başqa yerdə də
+	// yazılıb" siqnalı vermək üçündür — dəqiq siyahını görmək üçün
+	// GET /api/v1/items/{id} (related_items) və ya GET /api/v1/cves
+	// istifadə olunur.
+	HasRelatedCVE bool       `json:"has_related_cve"`
+	IsScraped     bool       `json:"is_scraped"`
+	PublishedAt   *time.Time `json:"published_at"`
+	FetchedAt     time.Time  `json:"fetched_at"`
+	ScrapedAt     *time.Time `json:"scraped_at"`
 }
 
 // RelatedFeedItem — "əlaqəli məqalə" siyahısı üçün YÜNGÜL DTO (tam
@@ -40,4 +48,14 @@ type RelatedFeedItem struct {
 	Title      string `json:"title"`
 	SourceName string `json:"source_name"`
 	Link       string `json:"link"`
+}
+
+// CVESummary — GET /api/v1/cves cavabının bir elementi: bir CVE ID-si və
+// onu paylaşan (2+) bütün məqalələr. Yalnız HƏQİQƏTƏN 2+ mənbədə/məqalədə
+// keçən CVE-lər qaytarılır (bax FeedItemRepository.GetCVESummary) — tək
+// məqalədə keçən CVE-lər burda görünmür, çünki "əlaqələndirmə" mənasızdır.
+type CVESummary struct {
+	CVEID string            `json:"cve_id"`
+	Count int               `json:"count"`
+	Items []RelatedFeedItem `json:"items"`
 }
